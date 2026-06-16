@@ -1,0 +1,1138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini API - Diagnostic Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #080710;
+            --card-bg: rgba(255, 255, 255, 0.03);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --glow-color-1: #6366f1;
+            --glow-color-2: #a855f7;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --success: #10b981;
+            --error: #ef4444;
+            --primary: #8b5cf6;
+            --accent: #3b82f6;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(99, 102, 241, 0.15) 0%, transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(168, 85, 247, 0.15) 0%, transparent 40%);
+            background-attachment: fixed;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2.5rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid var(--card-border);
+            backdrop-filter: blur(10px);
+        }
+
+        .logo-section {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--glow-color-1), var(--glow-color-2));
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 1.25rem;
+            box-shadow: 0 0 20px rgba(99, 102, 241, 0.4);
+            font-family: 'Outfit', sans-serif;
+        }
+
+        .logo-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(to right, #fff, #94a3b8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .status-badge-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            padding: 8px 16px;
+            border-radius: 99px;
+            backdrop-filter: blur(8px);
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: var(--text-secondary);
+            position: relative;
+        }
+
+        .status-dot.connected {
+            background-color: var(--success);
+            box-shadow: 0 0 10px var(--success);
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.disconnected {
+            background-color: var(--error);
+            box-shadow: 0 0 10px var(--error);
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+            70% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+
+        .status-text {
+            font-size: 0.85rem;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        /* Nav Tabs */
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 2rem;
+            background: rgba(255, 255, 255, 0.02);
+            padding: 6px;
+            border-radius: 14px;
+            border: 1px solid var(--card-border);
+            width: fit-content;
+        }
+
+        .tab-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            padding: 10px 20px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .tab-btn:hover {
+            color: var(--text-primary);
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .tab-btn.active {
+            color: var(--text-primary);
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(168, 85, 247, 0.2));
+            box-shadow: inset 0 0 10px rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+        }
+
+        /* Tab Content Panel */
+        .tab-panel {
+            display: none;
+            animation: fadeIn 0.4s ease-out;
+        }
+
+        .tab-panel.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Grid Layout for Overview */
+        .grid-overview {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 2rem;
+        }
+
+        @media (max-width: 1024px) {
+            .grid-overview {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .glass-card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 20px;
+            padding: 2rem;
+            backdrop-filter: blur(16px);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .glass-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+        }
+
+        .card-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--text-primary);
+        }
+
+        /* Info Item styling */
+        .info-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+        }
+
+        .info-item {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            padding-bottom: 1.25rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .info-item:last-child {
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+
+        .info-label {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .info-value {
+            font-size: 0.95rem;
+            font-family: monospace;
+            word-break: break-all;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.03);
+            color: #e2e8f0;
+        }
+
+        /* Capabilities styling */
+        .capability-badge {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--card-border);
+            padding: 12px 18px;
+            border-radius: 12px;
+            margin-bottom: 10px;
+        }
+
+        .capability-badge:last-child {
+            margin-bottom: 0;
+        }
+
+        .capability-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .cap-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+
+        .cap-desc {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .status-pill {
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .status-pill.enabled {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--success);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+
+        .status-pill.disabled {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--error);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+        }
+
+        /* Playground styling */
+        .chat-container {
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            gap: 2rem;
+            height: calc(100vh - 250px);
+            min-height: 550px;
+        }
+
+        @media (max-width: 900px) {
+            .chat-container {
+                grid-template-columns: 1fr;
+            }
+            .chat-sidebar {
+                display: none;
+            }
+        }
+
+        .chat-sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .chat-main {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        .chat-messages {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+            background: rgba(0, 0, 0, 0.15);
+            border-radius: 16px;
+            border: 1px solid var(--card-border);
+            margin-bottom: 1rem;
+        }
+
+        .chat-bubble {
+            max-width: 80%;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            animation: bubbleFade 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        @keyframes bubbleFade {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .chat-bubble.user {
+            align-self: flex-end;
+        }
+
+        .chat-bubble.gemini {
+            align-self: flex-start;
+        }
+
+        .bubble-content {
+            padding: 12px 18px;
+            border-radius: 18px;
+            font-size: 0.95rem;
+            line-height: 1.5;
+            word-break: break-word;
+        }
+
+        .chat-bubble.user .bubble-content {
+            background: linear-gradient(135deg, var(--glow-color-1), var(--primary));
+            color: white;
+            border-bottom-right-radius: 4px;
+            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.2);
+        }
+
+        .chat-bubble.gemini .bubble-content {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--card-border);
+            color: var(--text-primary);
+            border-bottom-left-radius: 4px;
+        }
+
+        /* Thoughts container */
+        .thoughts-container {
+            font-size: 0.85rem;
+            background: rgba(255, 255, 255, 0.02);
+            border-left: 2px solid var(--accent);
+            padding: 10px 14px;
+            border-radius: 0 8px 8px 0;
+            color: var(--text-secondary);
+            margin-top: 5px;
+        }
+
+        .thoughts-header {
+            font-weight: 600;
+            margin-bottom: 5px;
+            font-family: 'Outfit', sans-serif;
+            color: var(--accent);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            user-select: none;
+        }
+
+        .thoughts-header::before {
+            content: '▶';
+            font-size: 0.7rem;
+            transition: transform 0.2s;
+            display: inline-block;
+        }
+
+        .thoughts-container.open .thoughts-header::before {
+            transform: rotate(90deg);
+        }
+
+        .thoughts-content {
+            display: none;
+            white-space: pre-wrap;
+            line-height: 1.4;
+            max-height: 150px;
+            overflow-y: auto;
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .thoughts-container.open .thoughts-content {
+            display: block;
+        }
+
+        .chat-input-area {
+            display: flex;
+            gap: 10px;
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            padding: 10px;
+            border-radius: 16px;
+            align-items: center;
+            backdrop-filter: blur(8px);
+        }
+
+        .chat-input {
+            flex-grow: 1;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+            padding: 10px 15px;
+            resize: none;
+            height: 44px;
+            max-height: 120px;
+        }
+
+        .chat-input::placeholder {
+            color: var(--text-secondary);
+        }
+
+        .btn {
+            background: linear-gradient(135deg, var(--glow-color-1), var(--glow-color-2));
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            box-shadow: 0 4px 15px rgba(168, 85, 247, 0.3);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(168, 85, 247, 0.4);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn:disabled {
+            background: rgba(255,255,255,0.05);
+            color: var(--text-secondary);
+            cursor: not-allowed;
+            box-shadow: none;
+            transform: none;
+        }
+
+        /* Sidebar selections list */
+        .select-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 250px;
+            overflow-y: auto;
+        }
+
+        .select-item {
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--card-border);
+            padding: 12px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.85rem;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .select-item:hover {
+            background: rgba(255,255,255,0.05);
+            border-color: rgba(255,255,255,0.15);
+        }
+
+        .select-item.selected {
+            background: rgba(99, 102, 241, 0.1);
+            border-color: var(--glow-color-1);
+        }
+
+        .select-item-title {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .select-item-desc {
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* Grid Layout for Gems */
+        .gems-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .gem-card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            transition: all 0.3s;
+            position: relative;
+        }
+
+        .gem-card:hover {
+            transform: translateY(-5px);
+            border-color: rgba(99, 102, 241, 0.3);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+        }
+
+        .gem-tag {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            font-size: 0.65rem;
+            font-weight: 700;
+            padding: 3px 8px;
+            border-radius: 4px;
+            text-transform: uppercase;
+        }
+
+        .gem-tag.predefined {
+            background: rgba(59, 130, 246, 0.15);
+            color: var(--accent);
+            border: 1px solid rgba(59, 130, 246, 0.25);
+        }
+
+        .gem-tag.custom {
+            background: rgba(168, 85, 247, 0.15);
+            color: var(--glow-color-2);
+            border: 1px solid rgba(168, 85, 247, 0.25);
+        }
+
+        .gem-name {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            padding-right: 60px;
+        }
+
+        .gem-desc {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            line-height: 1.4;
+            flex-grow: 1;
+        }
+
+        /* Image outputs in chat */
+        .chat-images-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 10px;
+            margin-top: 8px;
+        }
+
+        .chat-image-wrapper {
+            position: relative;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid var(--card-border);
+            aspect-ratio: 1;
+        }
+
+        .chat-image-wrapper img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.3s;
+        }
+
+        .chat-image-wrapper:hover img {
+            transform: scale(1.05);
+        }
+
+        /* Loader */
+        .loader-dots {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+            height: 20px;
+            padding: 0 10px;
+        }
+
+        .loader-dot {
+            width: 8px;
+            height: 8px;
+            background-color: var(--text-secondary);
+            border-radius: 50%;
+            animation: dotWave 1.2s infinite ease-in-out;
+        }
+
+        .loader-dot:nth-child(2) { animation-delay: 0.2s; }
+        .loader-dot:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes dotWave {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-6px); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo-section">
+                <div class="logo-icon">G</div>
+                <h1 class="logo-title">Gemini WebAPI Studio</h1>
+            </div>
+            <div class="status-badge-container">
+                <div id="statusDot" class="status-dot"></div>
+                <div id="statusText" class="status-text">Checking...</div>
+            </div>
+        </header>
+
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('overview')">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+                Overview
+            </button>
+            <button class="tab-btn" onclick="switchTab('playground')">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                Chat Playground
+            </button>
+            <button class="tab-btn" onclick="switchTab('gems')">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+                Gems
+            </button>
+        </div>
+
+        <!-- OVERVIEW TAB -->
+        <div id="overviewPanel" class="tab-panel active">
+            <div class="grid-overview">
+                <div class="glass-card">
+                    <h2 class="card-title">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                        Authentication & API Status
+                    </h2>
+                    <div class="info-list">
+                        <div class="info-item">
+                            <span class="info-label">__Secure-1PSID Cookie</span>
+                            <span id="statPsid" class="info-value">Loading...</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">__Secure-1PSIDTS Cookie</span>
+                            <span id="statPsidts" class="info-value">Loading...</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">SNlM0e Access Token</span>
+                            <span id="statToken" class="info-value">Loading...</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Session ID</span>
+                            <span id="statSession" class="info-value">Loading...</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">API Build Label</span>
+                            <span id="statBuild" class="info-value">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass-card">
+                    <h2 class="card-title">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></svg>
+                        Account Capabilities
+                    </h2>
+                    <div class="info-list">
+                        <div class="capability-badge">
+                            <div class="capability-info">
+                                <span class="cap-title">Deep Research</span>
+                                <span class="cap-desc">Verify if multi-step web research is active</span>
+                            </div>
+                            <span id="capResearch" class="status-pill disabled">Checking...</span>
+                        </div>
+                        <div class="capability-badge">
+                            <div class="capability-info">
+                                <span class="cap-title">Image Generation (Imagen 3)</span>
+                                <span class="cap-desc">Verify if prompt-to-image feature is active</span>
+                            </div>
+                            <span id="capImage" class="status-pill enabled">Active</span>
+                        </div>
+                        <div class="capability-badge">
+                            <div class="capability-info">
+                                <span class="cap-title">Gems System Prompts</span>
+                                <span class="cap-desc">Verify Custom instructions availability</span>
+                            </div>
+                            <span id="capGems" class="status-pill enabled">Active</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PLAYGROUND TAB -->
+        <div id="playgroundPanel" class="tab-panel">
+            <div class="chat-container">
+                <div class="chat-sidebar">
+                    <div class="glass-card" style="padding: 1.25rem; flex-grow: 1; display: flex; flex-direction: column;">
+                        <h3 class="card-title" style="font-size: 1rem; margin-bottom: 1rem;">Active Gems</h3>
+                        <div id="sidebarGems" class="select-list">
+                            <div class="select-item selected" onclick="selectGem(null)">
+                                <span class="select-item-title">Default Gemini</span>
+                                <span class="select-item-desc">Standard assistant behaviors</span>
+                            </div>
+                        </div>
+
+                        <h3 class="card-title" style="font-size: 1rem; margin-top: 1.5rem; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
+                            <span>Recent Chats</span>
+                            <button onclick="newChat()" style="background: rgba(99, 102, 241, 0.15); border: 1px solid var(--glow-color-1); color: var(--text-primary); font-size: 0.75rem; font-weight: 600; padding: 4px 8px; border-radius: 6px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 4px;">+ New</button>
+                        </h3>
+                        <div id="sidebarChats" class="select-list" style="flex-grow: 1;">
+                            <div class="select-item">
+                                <span class="select-item-title">Loading history...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="chat-main">
+                    <div id="chatMessages" class="chat-messages">
+                        <div class="chat-bubble gemini">
+                            <div class="bubble-content">
+                                Hello! I'm your Gemini model instance. How can I help you today?
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="chat-input-area">
+                        <textarea id="chatInput" class="chat-input" placeholder="Type a message or request image generation..." onkeydown="handleInputKey(event)"></textarea>
+                        <button id="sendBtn" class="btn" onclick="sendMessage()">
+                            <span>Send</span>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- GEMS TAB -->
+        <div id="gemsPanel" class="tab-panel">
+            <div id="gemsGrid" class="gems-grid">
+                <!-- Dynamically populated -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let selectedGemId = null;
+        let isSending = false;
+        let chatHistory = [];
+
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchStatus();
+            fetchGems();
+            fetchChats();
+            loadChatHistory();
+        });
+
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-panel').forEach(panel => panel.classList.remove('active'));
+
+            const activeBtn = Array.from(document.querySelectorAll('.tab-btn')).find(btn => btn.textContent.toLowerCase().includes(tabName));
+            if (activeBtn) activeBtn.classList.add('active');
+
+            const panel = document.getElementById(`${tabName}Panel`);
+            if (panel) panel.classList.add('active');
+        }
+
+        async function fetchStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+
+                const statusDot = document.getElementById('statusDot');
+                const statusText = document.getElementById('statusText');
+
+                if (data.connected) {
+                    statusDot.className = 'status-dot connected';
+                    statusText.textContent = 'Connected';
+                    statusText.style.color = 'var(--success)';
+                } else {
+                    statusDot.className = 'status-dot disconnected';
+                    statusText.textContent = 'Disconnected';
+                    statusText.style.color = 'var(--error)';
+                }
+
+                document.getElementById('statPsid').textContent = data.psid;
+                document.getElementById('statPsidts').textContent = data.psidts;
+                document.getElementById('statToken').textContent = data.access_token || 'N/A';
+                document.getElementById('statSession').textContent = data.session_id || 'N/A';
+                document.getElementById('statBuild').textContent = data.build_label || 'N/A';
+
+                const capResearch = document.getElementById('capResearch');
+                if (data.deep_research_feature_present) {
+                    capResearch.textContent = 'Active';
+                    capResearch.className = 'status-pill enabled';
+                } else {
+                    capResearch.textContent = 'Disabled';
+                    capResearch.className = 'status-pill disabled';
+                }
+            } catch (err) {
+                console.error('Failed to fetch API status:', err);
+                document.getElementById('statusText').textContent = 'Error';
+            }
+        }
+
+        async function fetchGems() {
+            try {
+                const response = await fetch('/api/gems');
+                const gems = await response.json();
+                
+                const gemsGrid = document.getElementById('gemsGrid');
+                const sidebarGems = document.getElementById('sidebarGems');
+                
+                gemsGrid.innerHTML = '';
+                // Clear all except the first default gem
+                sidebarGems.innerHTML = `
+                    <div class="select-item selected" id="gem-default" onclick="selectGem(null)">
+                        <span class="select-item-title">Default Gemini</span>
+                        <span class="select-item-desc">Standard assistant behaviors</span>
+                    </div>
+                `;
+
+                gems.forEach(gem => {
+                    // 1. Add to Gems Grid
+                    const card = document.createElement('div');
+                    card.className = 'gem-card';
+                    card.innerHTML = `
+                        <span class="gem-tag ${gem.predefined ? 'predefined' : 'custom'}">${gem.predefined ? 'System' : 'Custom'}</span>
+                        <h3 class="gem-name">${gem.name}</h3>
+                        <p class="gem-desc">${gem.description || 'No description provided.'}</p>
+                    `;
+                    gemsGrid.appendChild(card);
+
+                    // 2. Add to Sidebar list
+                    const sidebarItem = document.createElement('div');
+                    sidebarItem.className = 'select-item';
+                    sidebarItem.id = `gem-${gem.id}`;
+                    sidebarItem.onclick = () => selectGem(gem.id);
+                    sidebarItem.innerHTML = `
+                        <span class="select-item-title">${gem.name}</span>
+                        <span class="select-item-desc">${gem.description || 'No description.'}</span>
+                    `;
+                    sidebarGems.appendChild(sidebarItem);
+                });
+            } catch (err) {
+                console.error('Failed to fetch Gems:', err);
+            }
+        }
+
+        async function fetchChats() {
+            try {
+                const response = await fetch('/api/chats');
+                const chats = await response.json();
+
+                const sidebarChats = document.getElementById('sidebarChats');
+                sidebarChats.innerHTML = '';
+
+                if (chats.length === 0) {
+                    sidebarChats.innerHTML = `
+                        <div class="select-item">
+                            <span class="select-item-title">No conversations found</span>
+                        </div>
+                    `;
+                    return;
+                }
+
+                chats.forEach(chat => {
+                    const item = document.createElement('div');
+                    item.className = 'select-item';
+                    item.innerHTML = `
+                        <span class="select-item-title">${chat.title || 'Untitled Chat'}</span>
+                        <span class="select-item-desc">ID: ${chat.cid}</span>
+                    `;
+                    sidebarChats.appendChild(item);
+                });
+            } catch (err) {
+                console.error('Failed to fetch recent chats:', err);
+                document.getElementById('sidebarChats').innerHTML = `
+                    <div class="select-item">
+                        <span class="select-item-title" style="color: var(--error)">Error loading history</span>
+                    </div>
+                `;
+            }
+        }
+
+        function selectGem(gemId) {
+            selectedGemId = gemId;
+            document.querySelectorAll('#sidebarGems .select-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+            if (gemId === null) {
+                document.getElementById('gem-default').classList.add('selected');
+            } else {
+                const item = document.getElementById(`gem-${gemId}`);
+                if (item) item.classList.add('selected');
+            }
+        }
+
+        function toggleThoughts(header) {
+            const container = header.parentElement;
+            container.classList.toggle('open');
+        }
+
+        function handleInputKey(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendMessage();
+            }
+        }
+
+        function loadChatHistory() {
+            const historyStr = localStorage.getItem('gemini_chat_history');
+            if (historyStr) {
+                try {
+                    chatHistory = JSON.parse(historyStr);
+                    const chatMessages = document.getElementById('chatMessages');
+                    chatMessages.innerHTML = '';
+                    chatHistory.forEach(msg => {
+                        appendMessageDOM(msg.role, msg.text, msg.thoughts, msg.images);
+                    });
+                } catch (err) {
+                    console.error('Failed to parse chat history:', err);
+                }
+            }
+        }
+
+        async function newChat() {
+            localStorage.removeItem('gemini_chat_history');
+            chatHistory = [];
+            
+            const chatMessages = document.getElementById('chatMessages');
+            chatMessages.innerHTML = `
+                <div class="chat-bubble gemini">
+                    <div class="bubble-content">
+                        New chat session started. How can I help you today?
+                    </div>
+                </div>
+            `;
+            
+            try {
+                await fetch('/api/chat/new', { method: 'POST' });
+                fetchChats();
+            } catch (err) {
+                console.error('Failed to reset chat session:', err);
+            }
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('chatInput');
+            const message = input.value.trim();
+            if (!message || isSending) return;
+
+            // 1. Add user bubble
+            appendMessage('user', message);
+            input.value = '';
+            
+            // 2. Add loader
+            const loaderId = appendLoader();
+            isSending = true;
+            document.getElementById('sendBtn').disabled = true;
+
+            try {
+                const response = await fetch('/api/chat/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message, gem_id: selectedGemId })
+                });
+                
+                const data = await response.json();
+                removeLoader(loaderId);
+
+                if (response.ok) {
+                    appendMessage('gemini', data.text, data.thoughts, data.images);
+                } else {
+                    appendMessage('gemini', `[ERROR] ${data.detail || 'An error occurred.'}`);
+                }
+            } catch (err) {
+                removeLoader(loaderId);
+                appendMessage('gemini', `[ERROR] Failed to connect to server: ${err.message}`);
+            } finally {
+                isSending = false;
+                document.getElementById('sendBtn').disabled = false;
+                input.focus();
+            }
+        }
+
+        function appendMessage(role, text, thoughts = null, images = []) {
+            appendMessageDOM(role, text, thoughts, images);
+            
+            // Save to localStorage
+            chatHistory.push({ role, text, thoughts, images });
+            localStorage.setItem('gemini_chat_history', JSON.stringify(chatHistory));
+        }
+
+        function appendMessageDOM(role, text, thoughts = null, images = []) {
+            const chatMessages = document.getElementById('chatMessages');
+            const bubble = document.createElement('div');
+            bubble.className = `chat-bubble ${role}`;
+
+            let thoughtsHtml = '';
+            if (thoughts) {
+                thoughtsHtml = `
+                    <div class="thoughts-container">
+                        <div class="thoughts-header" onclick="toggleThoughts(this)">Reasoning Process</div>
+                        <div class="thoughts-content">${thoughts}</div>
+                    </div>
+                `;
+            }
+
+            let imagesHtml = '';
+            if (images && images.length > 0) {
+                imagesHtml = '<div class="chat-images-grid">';
+                images.forEach(img => {
+                    imagesHtml += `
+                        <div class="chat-image-wrapper">
+                            <img src="${img.url}" alt="${img.title || 'Generated image'}" referrerpolicy="no-referrer" onclick="window.open('${img.url}')">
+                        </div>
+                    `;
+                });
+                imagesHtml += '</div>';
+            }
+
+            bubble.innerHTML = `
+                <div class="bubble-content">
+                    ${text.replace(/\n/g, '<br>')}
+                    ${imagesHtml}
+                    ${thoughtsHtml}
+                </div>
+            `;
+            chatMessages.appendChild(bubble);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function appendLoader() {
+            const chatMessages = document.getElementById('chatMessages');
+            const bubble = document.createElement('div');
+            const id = 'loader-' + Date.now();
+            bubble.className = 'chat-bubble gemini';
+            bubble.id = id;
+            bubble.innerHTML = `
+                <div class="bubble-content" style="padding: 8px 12px;">
+                    <div class="loader-dots">
+                        <div class="loader-dot"></div>
+                        <div class="loader-dot"></div>
+                        <div class="loader-dot"></div>
+                    </div>
+                </div>
+            `;
+            chatMessages.appendChild(bubble);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            return id;
+        }
+
+        function removeLoader(id) {
+            const loader = document.getElementById(id);
+            if (loader) loader.remove();
+        }
+    </script>
+</body>
+</html>

@@ -207,3 +207,15 @@ temp/
 # Cookies and credentials
 cookies.json
 *.cookies
+
+# Application database files containing credentials & config
+api_keys.json
+gemini_accounts.json
+gemini_agents.json
+dashboard_config.json
+videofx_state.json
+
+# Developer scratchpad and test directories
+scratch/
+
+

@@ -22,12 +22,49 @@
         <img src="https://github.com/HanaokaYuzu/Gemini-API/actions/workflows/pypi-publish.yml/badge.svg" alt="CI"></a>
 </p>
 
-# <img src="https://raw.githubusercontent.com/HanaokaYuzu/Gemini-API/master/assets/logo.svg" width="35px" alt="Gemini Icon" /> Gemini-API
+# <img src="https://raw.githubusercontent.com/HanaokaYuzu/Gemini-API/master/assets/logo.svg" width="35px" alt="Gemini Icon" /> Gemini-API Project
 
-A reverse-engineered asynchronous Python wrapper for the [Google Gemini](https://gemini.google.com) web app (formerly Bard).
+An all-in-one repository containing:
+1. **Gemini API Server & Web Dashboard (Gateway)**: A self-hosted API gateway with a premium Glassmorphic web management panel, automatic cookie rotation, custom AI agents, and an OpenAI-compatible API endpoint (`/v1/chat/completions`).
+2. **Gemini WebAPI Python Library (SDK)**: A reverse-engineered asynchronous Python wrapper for the [Google Gemini](https://gemini.google.com) web app.
 
-## Features
+---
 
+## 🖥️ 1. Gemini API Server & Web Dashboard
+
+This component bridges Google Gemini Web Client cookie authentication into a standardized, self-hosted API gateway compatible with the **OpenAI API specification**. It is accompanied by a modern, responsive Glassmorphic dashboard to monitor and configure everything easily.
+
+### Core Gateway Features
+* **OpenAI-Compatible Endpoint**: Exposes a standard `/v1/chat/completions` route so you can easily plug it into clients like NextChat, LobeChat, LibreChat, Dify, or the official OpenAI Python SDK.
+* **Premium Glassmorphic Dashboard**: A beautiful user interface supporting dark mode, responsive grids, and micro-animations.
+* **Multi-Account Connection Pool**: Bind multiple Gemini cookies (`__Secure-1PSID` / `__Secure-1PSIDTS`) and Gemini API keys. The server handles validation, failure bypasses, and request load balancing automatically.
+* **Custom AI Agents**: Define custom system instructions, model constraints, and create dedicated agent endpoints.
+* **Telemetry & Traffic Logs**: A live Request Monitor displaying the last 50 requests (client IP, request path, completion tokens, time duration, and attributed AI Agent).
+* **Robust Password Settings**: Set access passwords for the dashboard directly from the web, with secure server-side hash verification.
+* **Docker Ready**: Fully containerized using `docker-compose` for easy deployment to your VPS.
+* **Interactive Local Guide**: Access a rich built-in guide at `/guide` with copyable code snippets in Python/cURL and detailed FAQs in Vietnamese.
+
+### Quick Start with Docker
+
+To deploy the gateway on your local machine or a VPS:
+
+1. **Clone & Prepare files**: Make sure the following JSON state files exist in the project root directory before running the compose script, otherwise Docker will create directories for them:
+   ```bash
+   touch api_keys.json gemini_accounts.json gemini_agents.json dashboard_config.json
+   ```
+2. **Launch the stack**:
+   ```bash
+   docker compose up -d
+   ```
+3. **Access the Dashboard**: Open `http://localhost:8000` in your web browser. The default dashboard password is `123456`.
+
+---
+
+## 📦 2. Gemini WebAPI Python Library (SDK)
+
+A developer-friendly asynchronous Python wrapper for Google Gemini.
+
+### Features
 - **Persistent Cookies** - Automatically refreshes cookies in background. Optimized for always-on services.
 - **Image Generation** - Natively supports generating and editing images with natural language.
 - **Video & Audio Generation** - Supports generating videos and audio/music content natively.
@@ -40,44 +77,50 @@ A reverse-engineered asynchronous Python wrapper for the [Google Gemini](https:/
 - **Official Flavor** - Provides a simple and elegant interface inspired by [Google Generative AI](https://ai.google.dev/tutorials/python_quickstart)'s official API.
 - **Asynchronous** - Utilizes `asyncio` to run generation tasks and return outputs efficiently.
 
-## Table of Contents
+---
 
-- [Features](#features)
-- [Table of Contents](#table-of-contents)
-- [Installation](#installation)
-- [Authentication](#authentication)
-- [Usage](#usage)
-  - [Initialization](#initialization)
-  - [Generate Content](#generate-content)
-  - [Generate Content with Files](#generate-content-with-files)
-  - [Conversations Across Multiple Turns](#conversations-across-multiple-turns)
-  - [Continue Previous Conversations](#continue-previous-conversations)
-  - [Read Conversation History](#read-conversation-history)
-  - [Delete Previous Conversations from Gemini History](#delete-previous-conversations-from-gemini-history)
-  - [Temporary Mode](#temporary-mode)
-  - [Streaming Mode](#streaming-mode)
-  - [Select Language Model](#select-language-model)
-  - [List Available Models](#list-available-models)
-  - [Apply System Prompt with Gemini Gems](#apply-system-prompt-with-gemini-gems)
-  - [Manage Custom Gems](#manage-custom-gems)
-    - [Create a Custom Gem](#create-a-custom-gem)
-    - [Update an Existing Gem](#update-an-existing-gem)
-    - [Delete a Custom Gem](#delete-a-custom-gem)
-  - [Retrieve Model's Thought Process](#retrieve-models-thought-process)
-  - [Retrieve Images in Response](#retrieve-images-in-response)
-  - [Generate and Edit Images](#generate-and-edit-images)
-  - [Retrieve Videos and Audio](#retrieve-videos-and-audio)
-  - [Generate Content with Gemini Extensions](#generate-content-with-gemini-extensions)
-  - [Check and Switch to Other Reply Candidates](#check-and-switch-to-other-reply-candidates)
-  - [Deep Research](#deep-research)
-  - [Logging Configuration](#logging-configuration)
-- [CLI Tool](#cli-tool)
-  - [Cookie Setup](#cookie-setup)
-  - [CLI Commands](#cli-commands)
-  - [Deep Research Workflow](#deep-research-workflow)
+## 🛠️ Table of Contents
+
+- [1. Gemini API Server & Web Dashboard](#️-1-gemini-api-server--web-dashboard)
+  - [Core Gateway Features](#core-gateway-features)
+  - [Quick Start with Docker](#quick-start-with-docker)
+- [2. Gemini WebAPI Python Library (SDK)](#-2-gemini-webapi-python-library-sdk)
+  - [Features](#features-1)
+  - [Installation](#installation)
+  - [Authentication](#authentication)
+  - [Usage](#usage)
+    - [Initialization](#initialization)
+    - [Generate Content](#generate-content)
+    - [Generate Content with Files](#generate-content-with-files)
+    - [Conversations Across Multiple Turns](#conversations-across-multiple-turns)
+    - [Continue Previous Conversations](#continue-previous-conversations)
+    - [Read Conversation History](#read-conversation-history)
+    - [Delete Previous Conversations from Gemini History](#delete-previous-conversations-from-gemini-history)
+    - [Temporary Mode](#temporary-mode)
+    - [Streaming Mode](#streaming-mode)
+    - [Select Language Model](#select-language-model)
+    - [List Available Models](#list-available-models)
+    - [Apply System Prompt with Gemini Gems](#apply-system-prompt-with-gemini-gems)
+    - [Manage Custom Gems](#manage-custom-gems)
+      - [Create a Custom Gem](#create-a-custom-gem)
+      - [Update an Existing Gem](#update-an-existing-gem)
+      - [Delete a Custom Gem](#delete-a-custom-gem)
+    - [Retrieve Model's Thought Process](#retrieve-models-thought-process)
+    - [Retrieve Images in Response](#retrieve-images-in-response)
+    - [Generate and Edit Images](#generate-and-edit-images)
+    - [Retrieve Videos and Audio](#retrieve-videos-and-audio)
+    - [Generate Content with Gemini Extensions](#generate-content-with-gemini-extensions)
+    - [Check and Switch to Other Reply Candidates](#check-and-switch-to-other-reply-candidates)
+    - [Deep Research](#deep-research)
+    - [Logging Configuration](#logging-configuration)
+  - [CLI Tool](#cli-tool)
+    - [Cookie Setup](#cookie-setup)
+    - [CLI Commands](#cli-commands)
+    - [Deep Research Workflow](#deep-research-workflow)
 - [References](#references)
 - [Stargazers](#stargazers)
 
+---
 ## Installation
 
 > [!NOTE]

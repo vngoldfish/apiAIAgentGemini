@@ -1,0 +1,16 @@
+services:
+  gemini-api:
+    build: .
+    container_name: gemini-api
+    ports:
+      - "8000:8000"
+    environment:
+      # You can override these cookies with your own values
+      - SECURE_1PSID=g.a000_AjYuI_xzJbWKdaQ-Vh1O4BvZqNjq5NuDjfrrE2U8AKnAjtzZcyQ8Y1S3PQx26KDRPiWjAACgYKAZ8SARYSFQHGX2MiWbE39ZNBHCahqqwmum1h8hoVAUF8yKp70iSvj-LLuwyTioABObAe0076
+      - SECURE_1PSIDTS=sidts-CjYByojQUx_NAcNLc5_XGJdNzcO5e54xsvLiMGb81JlyQpsnCzc3dpBERsT-JebpUzxLs9GeyaAQAA
+    volumes:
+      - ./api_keys.json:/app/api_keys.json
+      - ./gemini_accounts.json:/app/gemini_accounts.json
+      - ./gemini_agents.json:/app/gemini_agents.json
+      - ./dashboard_config.json:/app/dashboard_config.json
+    restart: unless-stopped
