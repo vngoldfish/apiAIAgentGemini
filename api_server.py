@@ -306,7 +306,27 @@ async def log_requests(request: Request, call_next):
 # API Models
 class ChatMessage(BaseModel):
     role: str
-    content: str
+    content: Optional[Any] = ""
+
+def get_message_text(msg: ChatMessage) -> str:
+    content = msg.content
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        text_parts = []
+        for part in content:
+            if isinstance(part, dict):
+                if part.get("type") == "text" and "text" in part:
+                    text_parts.append(str(part["text"]))
+                elif "text" in part:
+                    text_parts.append(str(part["text"]))
+            elif isinstance(part, str):
+                text_parts.append(part)
+        return "\n".join(text_parts)
+    return str(content)
+
 
 class ChatCompletionRequest(BaseModel):
     model: str = "gemini"
@@ -1085,6 +1105,7 @@ async def health_check():
         )
 
 @app.get("/v1/models", dependencies=[Depends(verify_api_key)])
+@app.get("/models", dependencies=[Depends(verify_api_key)])
 async def list_models(request: Request):
     is_general_key = getattr(request.state, "is_general_key", True)
     authenticated_agent_id = getattr(request.state, "authenticated_agent_id", None)
@@ -1147,6 +1168,7 @@ async def list_models(request: Request):
     return {"object": "list", "data": models}
 
 @app.post("/v1/chat/completions", dependencies=[Depends(verify_api_key)])
+@app.post("/chat/completions", dependencies=[Depends(verify_api_key)])
 async def chat_completions(payload: ChatCompletionRequest, request: Request):
     # Get sticky or rotated active client
     session_id = request.headers.get("X-Session-ID")
@@ -1171,7 +1193,7 @@ async def chat_completions(payload: ChatCompletionRequest, request: Request):
          
     # Set request state for telemetry
     request.state.provider_id = acc_id
-    prompt_tokens = max(1, sum(len(m.content) for m in payload.messages) // 4)
+    prompt_tokens = max(1, sum(len(get_message_text(m)) for m in payload.messages) // 4)
     request.state.prompt_tokens = prompt_tokens
     request.state.completion_tokens = 0
          
@@ -1238,7 +1260,7 @@ async def chat_completions(payload: ChatCompletionRequest, request: Request):
     # Extract system instruction
     system_content = None
     if payload.messages and payload.messages[0].role == "system":
-        system_content = payload.messages[0].content
+        system_content = get_message_text(payload.messages[0])
         
     # Inject agent's system prompt if available
     if agent_system_prompt:
@@ -1251,7 +1273,7 @@ async def chat_completions(payload: ChatCompletionRequest, request: Request):
     user_msg = ""
     for msg in reversed(payload.messages):
         if msg.role == "user":
-            user_msg = msg.content
+            user_msg = get_message_text(msg)
             break
             
     if not user_msg:
