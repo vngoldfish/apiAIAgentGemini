@@ -1,0 +1,68 @@
+{
+   "action": {
+      "default_icon": {
+         "128": "icon128.png",
+         "48": "icon48.png"
+      },
+      "default_popup": "popup.html"
+   },
+   "background": {
+      "service_worker": "background.js"
+   },
+   "content_scripts": [ {
+      "js": [ "content.js" ],
+      "matches": [ "https://labs.google/*" ],
+      "run_at": "document_idle"
+   }, {
+      "js": [ "content_grok.js" ],
+      "matches": [ "https://grok.com/*" ],
+      "run_at": "document_idle"
+   }, {
+      "js": [ "content_gemini.js" ],
+      "matches": [ "https://gemini.google.com/*" ],
+      "run_at": "document_idle"
+   }, {
+      "js": [ "content_dashboard.js" ],
+      "matches": [
+         "http://127.0.0.1/*",
+         "http://localhost/*"
+      ],
+      "run_at": "document_idle"
+   } ],
+   "default_locale": "en",
+   "description": "__MSG_appDescription__",
+   "host_permissions": [
+      "https://labs.google/*",
+      "https://grok.com/*",
+      "https://*.grok.com/*",
+      "https://gemini.google.com/*",
+      "https://*.googleusercontent.com/*",
+      "https://*.google.com/*",
+      "http://localhost/*",
+      "http://127.0.0.1/*",
+      "*://*.google.com/*",
+      "*://google.com/*"
+   ],
+   "icons": {
+      "128": "icon128.png",
+      "48": "icon48.png"
+   },
+   "manifest_version": 3,
+   "name": "__MSG_appName__",
+   "options_ui": {
+      "page": "options.html",
+      "open_in_tab": false
+   },
+   "permissions": [ "alarms", "cookies", "tabs", "scripting", "storage", "webRequest" ],
+   "version": "7.5.0",
+   "web_accessible_resources": [ {
+      "matches": [
+         "https://labs.google/*",
+         "https://grok.com/*",
+         "https://gemini.google.com/*",
+         "http://127.0.0.1/*",
+         "http://localhost/*"
+      ],
+      "resources": [ "page_script.js", "icon48.png", "popup.html", "popup.js" ]
+   } ]
+}

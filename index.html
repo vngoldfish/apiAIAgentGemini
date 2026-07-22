@@ -1171,15 +1171,64 @@
 
         <!-- Tab: Providers -->
         <div id="providers" class="tab-content">
+            <!-- Extension Auth Helper bridge -->
+            <div class="glass-panel" style="margin-bottom: 20px;">
+                <h2 class="panel-title">
+                    <i class="fa-solid fa-puzzle-piece"></i> Extension Auth Helper
+                    <span id="ext-status-badge" style="margin-left: 10px; font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 20px; background: rgba(255,255,255,0.08); color: var(--text-muted);">Checking…</span>
+                </h2>
+                <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 14px; line-height: 1.5;">
+                    <strong>Tự động:</strong> Extension lấy cookie tài khoản Gemini đang login trong Chrome.
+                    Khi API báo cookie lỗi/hết hạn, server tự đánh dấu provider Disconnected và yêu cầu Extension
+                    đẩy cookie mới (heartbeat ~15s). SDK cũng tự refresh <code>__Secure-1PSIDTS</code> nền.
+                    Giữ Chrome login <a href="https://gemini.google.com" target="_blank" style="color: var(--accent-cyan);">gemini.google.com</a>,
+                    port extension = <strong>8000</strong>.
+                </p>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 14px;">
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 12px; padding: 12px 14px;">
+                        <div class="status-label" style="font-size: 11px; margin-bottom: 4px;">Bridge</div>
+                        <div id="ext-bridge-text" style="font-weight: 600; color: var(--text-main);">—</div>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 12px; padding: 12px 14px;">
+                        <div class="status-label" style="font-size: 11px; margin-bottom: 4px;">Last Cookie Sync</div>
+                        <div id="ext-sync-text" style="font-weight: 600; color: var(--text-main);">—</div>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 12px; padding: 12px 14px;">
+                        <div class="status-label" style="font-size: 11px; margin-bottom: 4px;">PSID (masked)</div>
+                        <div id="ext-psid-text" style="font-weight: 600; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-main);">—</div>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 12px; padding: 12px 14px;">
+                        <div class="status-label" style="font-size: 11px; margin-bottom: 4px;">Provider</div>
+                        <div id="ext-provider-text" style="font-weight: 600; color: var(--text-main);">—</div>
+                    </div>
+                </div>
+                <div id="ext-error-text" style="display:none; color: #f87171; font-size: 13px; margin-bottom: 10px;"></div>
+                <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+                    <button class="btn" type="button" id="btn-import-from-extension" onclick="importProviderFromExtension()" style="background: linear-gradient(135deg, #3b82f6, #2563eb);">
+                        <i class="fa-solid fa-puzzle-piece"></i> Add Provider từ Extension
+                    </button>
+                    <button class="btn" type="button" onclick="fetchExtensionStatus()">
+                        <i class="fa-solid fa-rotate"></i> Refresh Status
+                    </button>
+                    <button class="btn" type="button" id="btn-apply-ext-cookies" onclick="applyExtensionCookies()" style="display:none;">
+                        <i class="fa-solid fa-download"></i> Apply Cached Cookies
+                    </button>
+                    <span id="ext-bridge-ready" style="font-size: 12px; color: var(--text-muted);">
+                        Bridge page: checking…
+                    </span>
+                </div>
+            </div>
+
             <div class="glass-panel">
                 <h2 class="panel-title">
                     <i class="fa-solid fa-user-plus"></i> Connect New Gemini Provider Account
+                    <span style="font-size: 12px; font-weight: 500; color: var(--text-muted); margin-left: 8px;">(web: để trống cookie → tự gọi Extension)</span>
                 </h2>
                 <div style="display: flex; flex-direction: column; gap: 15px;">
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
                         <div style="display: flex; flex-direction: column; gap: 5px;">
                             <label class="status-label" style="font-size: 11px;">Provider Name</label>
-                            <input type="text" id="prov-name-input" class="input-text" placeholder="e.g. Account Personal, Work Account">
+                            <input type="text" id="prov-name-input" class="input-text" placeholder="e.g. Account Personal (mặc định: Extension Auto)">
                         </div>
                         <div style="display: flex; flex-direction: column; gap: 5px;">
                             <label class="status-label" style="font-size: 11px;">Connection Type</label>
@@ -1191,11 +1240,11 @@
                         <div id="prov-web-fields" style="display: contents;">
                             <div style="display: flex; flex-direction: column; gap: 5px;">
                                 <label class="status-label" style="font-size: 11px;">__Secure-1PSID Cookie</label>
-                                <input type="text" id="prov-psid-input" class="input-text" placeholder="g.a000_...">
+                                <input type="text" id="prov-psid-input" class="input-text" placeholder="Để trống = lấy từ Extension (tài khoản đang login)">
                             </div>
                             <div style="display: flex; flex-direction: column; gap: 5px;">
                                 <label class="status-label" style="font-size: 11px;">__Secure-1PSIDTS Cookie</label>
-                                <input type="text" id="prov-psidts-input" class="input-text" placeholder="sidts-CjY...">
+                                <input type="text" id="prov-psidts-input" class="input-text" placeholder="Để trống = lấy từ Extension">
                             </div>
                         </div>
                         <div id="prov-api-fields" style="display: none; flex-direction: column; gap: 5px; grid-column: span 2;">
@@ -1203,12 +1252,15 @@
                             <input type="text" id="prov-api-key-input" class="input-text" placeholder="AIzaSy...">
                         </div>
                     </div>
-                    <div style="display: flex; justify-content: flex-end; align-items: center; gap: 15px; margin-top: 10px;">
+                    <div style="display: flex; justify-content: flex-end; align-items: center; gap: 15px; margin-top: 10px; flex-wrap: wrap;">
                         <span id="add-prov-status-msg" style="font-size: 14px; color: var(--text-muted); font-style: italic; display: none;">
                             <i class="fa-solid fa-spinner fa-spin"></i> <span id="add-prov-status-text">Validating connection cookies...</span>
                         </span>
+                        <button class="btn" type="button" id="btn-add-from-ext" onclick="importProviderFromExtension()" style="background: rgba(59,130,246,0.25); border: 1px solid rgba(59,130,246,0.4);">
+                            <i class="fa-solid fa-puzzle-piece"></i> Lấy cookie Extension &amp; Add
+                        </button>
                         <button class="btn" id="btn-add-prov" onclick="addProvider()">
-                            <i class="fa-solid fa-circle-check"></i> Validate & Add Connection
+                            <i class="fa-solid fa-circle-check"></i> Validate &amp; Add Connection
                         </button>
                     </div>
                 </div>
@@ -1459,18 +1511,27 @@
                         <div class="step-item">
                             <div class="step-number">1</div>
                             <div class="step-content">
-                                <div class="step-title">Lấy Cookie Tài Khoản Gemini</div>
+                                <div class="step-title">Cài Extension Auth Helper</div>
                                 <div class="step-desc">
-                                    Truy cập vào trang web <a href="https://gemini.google.com" target="_blank" style="color: var(--accent-cyan); text-decoration: underline;">Google Gemini</a> và đăng nhập. Nhấn F12 (hoặc click chuột phải chọn Inspect), mở tab <strong>Application</strong> (Chrome/Edge) hoặc <strong>Storage</strong> (Firefox), tìm mục <strong>Cookies</strong>, chọn trang gemini.google.com và copy giá trị của cookie tên là <code>__Secure-1PSID</code>.
+                                    Mở Chrome → <code>chrome://extensions</code> → bật <strong>Developer mode</strong> →
+                                    <strong>Load unpacked</strong> → chọn thư mục
+                                    <code>extension-auth-helper/extension-auth-helper</code>.
+                                    Trong Options của extension, đặt <strong>Backend Port = 8000</strong>
+                                    (trùng với <code>api_server.py</code>).
                                 </div>
                             </div>
                         </div>
                         <div class="step-item">
                             <div class="step-number">2</div>
                             <div class="step-content">
-                                <div class="step-title">Thêm Tài Khoản Vào Providers Pool</div>
+                                <div class="step-title">Đăng nhập Gemini &amp; Sync Cookies</div>
                                 <div class="step-desc">
-                                    Vào tab <strong>Providers</strong> trong Dashboard này, click chọn <strong>Add Account</strong>. Nhập tên gợi nhớ (ví dụ: Tài khoản 1) và dán giá trị cookie <code>__Secure-1PSID</code> vừa copy vào. Click <strong>Add Account</strong> để lưu. Hệ thống sẽ tự động xác minh trạng thái hoạt động của tài khoản đó.
+                                    Mở <a href="https://gemini.google.com" target="_blank" style="color: var(--accent-cyan); text-decoration: underline;">gemini.google.com</a>
+                                    và đăng nhập Google. Click icon extension → <strong>Sync Cookies</strong>
+                                    (hoặc chờ auto-sync ~2 phút). Vào tab <strong>Providers</strong> trên Dashboard:
+                                    trạng thái Extension Bridge sẽ chuyển <strong>Connected</strong> và provider
+                                    <em>Extension Auto</em> xuất hiện trong pool — <strong>không cần copy cookie thủ công</strong>.
+                                    (Vẫn có form manual fallback nếu cần.)
                                 </div>
                             </div>
                         </div>
@@ -1780,10 +1841,18 @@ print(response.choices[0].message.content)</code></pre>
             fetchStatus();
             fetchKeys();
             fetchProviders();
+            fetchExtensionStatus();
+            pingExtensionPageBridge();
             
             // Poll status every 5 seconds if not already running
             if (!window.statusIntervalId) {
                 window.statusIntervalId = setInterval(fetchStatus, 5000);
+            }
+            if (!window.extStatusIntervalId) {
+                window.extStatusIntervalId = setInterval(fetchExtensionStatus, 8000);
+            }
+            if (!window.extBridgePingId) {
+                window.extBridgePingId = setInterval(pingExtensionPageBridge, 10000);
             }
         }
 
@@ -1950,6 +2019,7 @@ print(response.choices[0].message.content)</code></pre>
 
             if (tabId === 'providers') {
                 fetchProviders();
+                fetchExtensionStatus();
             }
 
             if (tabId === 'agents') {
@@ -3173,6 +3243,9 @@ print(response.choices[0].message.content)</code></pre>
                 if (p.is_default) {
                     nameDisplay += ` <span class="badge-status s2xx" style="font-size: 10px; margin-left: 5px;">Fallback Default</span>`;
                 }
+                if (p.source === 'extension_auto') {
+                    nameDisplay += ` <span class="badge-status s2xx" style="font-size: 10px; margin-left: 5px; background: rgba(59,130,246,0.2); color: #60a5fa;">Extension</span>`;
+                }
                 
                 const actionButton = `
                     <button class="btn-delete" onclick="deleteProvider('${p.id}')">
@@ -3281,27 +3354,336 @@ print(response.choices[0].message.content)</code></pre>
             }
         }
 
+        async function fetchExtensionStatus() {
+            const badge = document.getElementById('ext-status-badge');
+            const bridgeText = document.getElementById('ext-bridge-text');
+            const syncText = document.getElementById('ext-sync-text');
+            const psidText = document.getElementById('ext-psid-text');
+            const providerText = document.getElementById('ext-provider-text');
+            const errorText = document.getElementById('ext-error-text');
+            const applyBtn = document.getElementById('btn-apply-ext-cookies');
+            if (!badge) return;
+
+            try {
+                const res = await fetch('/api/extension/status');
+                if (!res.ok) throw new Error('status ' + res.status);
+                const data = await res.json();
+
+                if (data.connected) {
+                    badge.textContent = 'Connected';
+                    badge.style.background = 'rgba(34, 197, 94, 0.2)';
+                    badge.style.color = '#4ade80';
+                    if (bridgeText) bridgeText.textContent = 'Online · ' + (data.last_heartbeat || 'just now');
+                } else {
+                    badge.textContent = 'Disconnected';
+                    badge.style.background = 'rgba(239, 68, 68, 0.15)';
+                    badge.style.color = '#f87171';
+                    if (bridgeText) bridgeText.textContent = data.last_heartbeat
+                        ? ('Last seen ' + data.last_heartbeat)
+                        : 'Extension not detected';
+                }
+
+                if (syncText) syncText.textContent = data.last_cookie_sync || 'Never';
+                if (psidText) {
+                    let t = data.masked_psid || '—';
+                    if (data.has_psid && !data.has_psidts) t += ' (no PSIDTS)';
+                    psidText.textContent = t;
+                }
+                if (providerText) {
+                    providerText.textContent = data.provider_name
+                        ? `${data.provider_name} (${data.provider_id || '—'})`
+                        : (data.has_cached_cookies ? 'Cookies cached — not applied' : '—');
+                }
+                if (errorText) {
+                    if (data.last_error) {
+                        errorText.style.display = 'block';
+                        errorText.textContent = 'Last error: ' + data.last_error;
+                    } else {
+                        errorText.style.display = 'none';
+                        errorText.textContent = '';
+                    }
+                }
+                if (applyBtn) {
+                    applyBtn.style.display = (data.has_cached_cookies && !data.provider_id) ? 'inline-flex' : 'none';
+                }
+            } catch (err) {
+                badge.textContent = 'Unavailable';
+                badge.style.background = 'rgba(255,255,255,0.08)';
+                badge.style.color = 'var(--text-muted)';
+                if (bridgeText) bridgeText.textContent = 'Cannot reach /api/extension/status';
+            }
+        }
+
+        async function applyExtensionCookies() {
+            const applyBtn = document.getElementById('btn-apply-ext-cookies');
+            if (applyBtn) {
+                applyBtn.disabled = true;
+                applyBtn.style.opacity = '0.5';
+            }
+            try {
+                const res = await fetch('/api/extension/apply-cached', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    alert('Extension cookies applied successfully!');
+                    fetchExtensionStatus();
+                    if (typeof fetchProviders === 'function') fetchProviders();
+                    if (typeof fetchStatus === 'function') fetchStatus();
+                } else {
+                    alert('Failed: ' + (data.detail || res.status));
+                }
+            } catch (err) {
+                alert('Request failed: ' + err.message);
+            } finally {
+                if (applyBtn) {
+                    applyBtn.disabled = false;
+                    applyBtn.style.opacity = '1';
+                }
+            }
+        }
+
+        // ---- Dashboard ↔ Extension bridge (content_dashboard.js) ----
+        let extensionPageBridgeReady = false;
+
+        window.addEventListener('message', (event) => {
+            if (event.source !== window) return;
+            const data = event.data;
+            if (!data || data.source !== 'gemini-auth-helper') return;
+            if (data.type === 'GEMINI_API_EXTENSION_READY') {
+                extensionPageBridgeReady = !!data.ok;
+                const el = document.getElementById('ext-bridge-ready');
+                if (el) {
+                    el.textContent = extensionPageBridgeReady
+                        ? 'Bridge page: connected (extension injected)'
+                        : 'Bridge page: extension not ready';
+                    el.style.color = extensionPageBridgeReady ? '#4ade80' : 'var(--text-muted)';
+                }
+            }
+        });
+
+        function pingExtensionPageBridge() {
+            window.postMessage({ type: 'GEMINI_API_DASHBOARD_PING', requestId: 'ping-' + Date.now() }, '*');
+        }
+
+        function requestCookiesViaPageBridge(name, timeoutMs = 20000) {
+            return new Promise((resolve) => {
+                const requestId = 'req-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+                let settled = false;
+
+                function onMsg(event) {
+                    if (event.source !== window) return;
+                    const data = event.data;
+                    if (!data || data.type !== 'GEMINI_API_DASHBOARD_COOKIES_RESULT') return;
+                    if (data.requestId !== requestId) return;
+                    if (settled) return;
+                    settled = true;
+                    clearTimeout(timer);
+                    window.removeEventListener('message', onMsg);
+                    resolve(data);
+                }
+
+                const timer = setTimeout(() => {
+                    if (settled) return;
+                    settled = true;
+                    window.removeEventListener('message', onMsg);
+                    resolve({
+                        ok: false,
+                        error: 'Extension không phản hồi. Reload extension (v7.3+) và refresh trang Dashboard.',
+                    });
+                }, timeoutMs);
+
+                window.addEventListener('message', onMsg);
+                window.postMessage({
+                    type: 'GEMINI_API_DASHBOARD_REQUEST_COOKIES',
+                    requestId,
+                    name: name || 'Extension Auto',
+                }, '*');
+            });
+        }
+
+        async function pollForExtensionProvider(timeoutMs = 45000, preferredName = 'Extension Auto') {
+            const start = Date.now();
+            while (Date.now() - start < timeoutMs) {
+                try {
+                    const res = await fetch('/api/extension/status');
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.provider_id && data.has_psid) {
+                            // Also check pool list for Active
+                            const provRes = await fetch('/api/providers');
+                            if (provRes.ok) {
+                                const list = await provRes.json();
+                                const found = list.find(p => p.id === data.provider_id && p.status === 'Active');
+                                if (found) {
+                                    return { ok: true, provider: found, status: data };
+                                }
+                            }
+                            return {
+                                ok: true,
+                                provider: {
+                                    id: data.provider_id,
+                                    name: data.provider_name || preferredName,
+                                    status: 'Active',
+                                },
+                                status: data,
+                            };
+                        }
+                    }
+                } catch (e) { /* keep polling */ }
+                await new Promise(r => setTimeout(r, 1500));
+            }
+            return { ok: false, error: 'Hết thời gian chờ extension đẩy cookie. Kiểm tra đã login Gemini trong Chrome chưa.' };
+        }
+
+        function setAddProviderBusy(busy, text) {
+            const statusMsg = document.getElementById('add-prov-status-msg');
+            const statusText = document.getElementById('add-prov-status-text');
+            const btnAdd = document.getElementById('btn-add-prov');
+            const btnExt = document.getElementById('btn-add-from-ext');
+            const btnImport = document.getElementById('btn-import-from-extension');
+            if (statusMsg) statusMsg.style.display = busy ? 'inline-block' : 'none';
+            if (statusText && text) statusText.innerText = text;
+            [btnAdd, btnExt, btnImport].forEach(btn => {
+                if (!btn) return;
+                btn.disabled = !!busy;
+                btn.style.opacity = busy ? '0.5' : '1';
+            });
+        }
+
+        /**
+         * Primary UX: when no cookies entered, call extension to read the
+         * currently logged-in Gemini account and auto-add provider.
+         */
+        async function importProviderFromExtension() {
+            const nameInput = document.getElementById('prov-name-input');
+            const name = (nameInput && nameInput.value.trim()) || 'Extension Auto';
+
+            setAddProviderBusy(true, 'Đang gọi Extension lấy cookie tài khoản Gemini hiện tại...');
+            pingExtensionPageBridge();
+
+            try {
+                // 1) Prefer direct page bridge (instant)
+                const bridgeResult = await requestCookiesViaPageBridge(name, 22000);
+                if (bridgeResult && bridgeResult.ok) {
+                    // Extension already auto-applied via /sync/gemini-cookies
+                    if (nameInput) nameInput.value = '';
+                    const psidInput = document.getElementById('prov-psid-input');
+                    const psidtsInput = document.getElementById('prov-psidts-input');
+                    if (psidInput) psidInput.value = '';
+                    if (psidtsInput) psidtsInput.value = '';
+                    await fetchExtensionStatus();
+                    if (typeof fetchProviders === 'function') await fetchProviders();
+                    if (typeof fetchStatus === 'function') await fetchStatus();
+                    const pid = bridgeResult.provider && bridgeResult.provider.id;
+                    alert(
+                        'Đã thêm provider từ Extension' +
+                        (pid ? ` (${bridgeResult.provider.name || name} · ${pid})` : '') +
+                        '!'
+                    );
+                    return;
+                }
+
+                // If bridge returned raw cookies but push failed, try REST add
+                if (bridgeResult && bridgeResult.psid) {
+                    setAddProviderBusy(true, 'Extension có cookie — đang validate với server...');
+                    const res = await fetch('/api/providers', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            name,
+                            provider_type: 'web',
+                            psid: bridgeResult.psid,
+                            psidts: bridgeResult.psidts || '',
+                            api_key: '',
+                        }),
+                    });
+                    if (res.ok) {
+                        if (nameInput) nameInput.value = '';
+                        await fetchExtensionStatus();
+                        if (typeof fetchProviders === 'function') await fetchProviders();
+                        if (typeof fetchStatus === 'function') await fetchStatus();
+                        alert('Đã thêm provider từ cookie Extension!');
+                        return;
+                    }
+                }
+
+                // 2) Fallback: server flag → extension heartbeat push → poll
+                setAddProviderBusy(true, 'Bridge chậm — yêu cầu Extension qua server heartbeat...');
+                await fetch('/api/extension/import-provider', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, timeout_seconds: 45 }),
+                });
+                await fetch('/api/extension/request-sync', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, timeout_seconds: 45 }),
+                });
+
+                setAddProviderBusy(true, 'Đang chờ Extension đẩy cookie (tối đa ~45s)...');
+                const polled = await pollForExtensionProvider(45000, name);
+                if (polled.ok) {
+                    if (nameInput) nameInput.value = '';
+                    await fetchExtensionStatus();
+                    if (typeof fetchProviders === 'function') await fetchProviders();
+                    if (typeof fetchStatus === 'function') await fetchStatus();
+                    alert(
+                        'Đã thêm provider từ Extension' +
+                        (polled.provider ? ` (${polled.provider.name} · ${polled.provider.id})` : '') +
+                        '!'
+                    );
+                    return;
+                }
+
+                const detail = (bridgeResult && bridgeResult.error) || (polled && polled.error) || 'Unknown error';
+                alert(
+                    'Không lấy được cookie từ Extension.\n\n' +
+                    detail +
+                    '\n\nChecklist:\n' +
+                    '1) Reload extension v7.3+\n' +
+                    '2) Login gemini.google.com trong Chrome này\n' +
+                    '3) Refresh Dashboard (localhost:8000)\n' +
+                    '4) Extension Options → port 8000'
+                );
+            } catch (err) {
+                console.error(err);
+                alert('Lỗi khi gọi Extension: ' + (err.message || err));
+            } finally {
+                setAddProviderBusy(false);
+            }
+        }
+
         async function addProvider() {
             const nameInput = document.getElementById('prov-name-input');
             const typeSelect = document.getElementById('prov-type-select');
             const psidInput = document.getElementById('prov-psid-input');
             const psidtsInput = document.getElementById('prov-psidts-input');
             const apiKeyInput = document.getElementById('prov-api-key-input');
-            const statusMsg = document.getElementById('add-prov-status-msg');
-            const btnAdd = document.getElementById('btn-add-prov');
             
-            const name = nameInput.value.trim();
+            let name = nameInput.value.trim();
             const provider_type = typeSelect.value;
-            const psid = psidInput.value.trim();
-            const psidts = psidtsInput.value.trim();
+            let psid = psidInput.value.trim();
+            let psidts = psidtsInput.value.trim();
             const api_key = apiKeyInput.value.trim();
+
+            // Web + empty cookies → automatically call Extension for current Gemini session
+            if (provider_type === 'web' && !psid) {
+                if (!name) {
+                    name = 'Extension Auto';
+                    nameInput.value = name;
+                }
+                await importProviderFromExtension();
+                return;
+            }
             
             if (!name) {
                 alert("Please enter a Provider Name.");
                 return;
             }
-            if (provider_type === 'web' && (!psid || !psidts)) {
-                alert("Please fill in cookie details (PSID, PSIDTS).");
+            if (provider_type === 'web' && !psid) {
+                alert("Please fill in cookie details, or leave blank to import from Extension.");
                 return;
             }
             if (provider_type === 'api_key' && !api_key) {
@@ -3309,9 +3691,9 @@ print(response.choices[0].message.content)</code></pre>
                 return;
             }
             
-            statusMsg.style.display = 'inline-block';
-            btnAdd.disabled = true;
-            btnAdd.style.opacity = '0.5';
+            setAddProviderBusy(true, provider_type === 'api_key'
+                ? 'Validating Gemini API key...'
+                : 'Validating connection cookies...');
             
             try {
                 const res = await fetch('/api/providers', {
@@ -3327,6 +3709,7 @@ print(response.choices[0].message.content)</code></pre>
                     apiKeyInput.value = '';
                     fetchProviders();
                     fetchStatus();
+                    fetchExtensionStatus();
                     alert("Gemini account connection validated and added successfully!");
                 } else {
                     const data = await res.json();
@@ -3336,9 +3719,7 @@ print(response.choices[0].message.content)</code></pre>
                 console.error("Failed to add provider", err);
                 alert("Connection failed. Please verify your connection details and network status.");
             } finally {
-                statusMsg.style.display = 'none';
-                btnAdd.disabled = false;
-                btnAdd.style.opacity = '1';
+                setAddProviderBusy(false);
             }
         }
 

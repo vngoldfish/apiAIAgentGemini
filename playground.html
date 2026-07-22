@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gemini API Playground — Chat · Ảnh · Video</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg0: #070a12;
+      --bg1: #0d1220;
+      --panel: rgba(18, 24, 40, 0.72);
+      --border: rgba(255,255,255,0.08);
+      --text: #e8eefc;
+      --muted: #8b97b3;
+      --accent: #5b8cff;
+      --accent2: #22d3ee;
+      --pink: #f472b6;
+      --green: #34d399;
+      --red: #f87171;
+      --shadow: 0 20px 60px rgba(0,0,0,0.45);
+      --radius: 16px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Outfit', system-ui, sans-serif;
+      color: var(--text);
+      min-height: 100vh;
+      background:
+        radial-gradient(1200px 600px at 10% -10%, rgba(91,140,255,0.18), transparent 55%),
+        radial-gradient(900px 500px at 100% 0%, rgba(34,211,238,0.12), transparent 50%),
+        radial-gradient(800px 400px at 50% 100%, rgba(244,114,182,0.08), transparent 50%),
+        var(--bg0);
+    }
+    .app {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px 16px 40px;
+      display: grid;
+      gap: 16px;
+      grid-template-rows: auto auto 1fr;
+      min-height: 100vh;
+    }
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .logo {
+      width: 42px; height: 42px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      display: grid; place-items: center;
+      font-weight: 800;
+      box-shadow: 0 8px 24px rgba(91,140,255,0.35);
+    }
+    h1 { font-size: 1.25rem; font-weight: 700; letter-spacing: -0.02em; }
+    h1 span { color: var(--muted); font-weight: 500; font-size: 0.9rem; margin-left: 8px; }
+    .status-pill {
+      font-size: 12px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.04);
+      color: var(--muted);
+    }
+    .status-pill.ok { color: var(--green); border-color: rgba(52,211,153,0.3); }
+    .status-pill.bad { color: var(--red); border-color: rgba(248,113,113,0.3); }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      backdrop-filter: blur(16px);
+      box-shadow: var(--shadow);
+    }
+    .config {
+      padding: 14px 16px;
+      display: grid;
+      grid-template-columns: 1.2fr 1.6fr auto auto;
+      gap: 10px;
+      align-items: end;
+    }
+    @media (max-width: 900px) {
+      .config { grid-template-columns: 1fr; }
+    }
+    label {
+      display: block;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+    input, select, textarea {
+      width: 100%;
+      background: rgba(0,0,0,0.28);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font: inherit;
+      outline: none;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    input:focus, select:focus, textarea:focus {
+      border-color: rgba(91,140,255,0.55);
+      box-shadow: 0 0 0 3px rgba(91,140,255,0.15);
+    }
+    .btn {
+      border: none;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-weight: 600;
+      font-size: 14px;
+      cursor: pointer;
+      color: white;
+      background: linear-gradient(135deg, var(--accent), #3b6ef5);
+      transition: transform .12s, opacity .12s;
+      white-space: nowrap;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+    .btn.secondary {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+    .btn.pink { background: linear-gradient(135deg, #ec4899, #a855f7); }
+    .btn.cyan { background: linear-gradient(135deg, #06b6d4, #3b82f6); }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+      padding: 0 4px;
+      flex-wrap: wrap;
+    }
+    .tab {
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 13px;
+    }
+    .tab.active {
+      color: white;
+      background: rgba(91,140,255,0.2);
+      border-color: rgba(91,140,255,0.4);
+    }
+
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 16px;
+      min-height: 0;
+    }
+    @media (max-width: 960px) {
+      .main-grid { grid-template-columns: 1fr; }
+    }
+
+    .chat-panel {
+      display: flex;
+      flex-direction: column;
+      min-height: 520px;
+      max-height: calc(100vh - 220px);
+      overflow: hidden;
+    }
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .msg {
+      max-width: 92%;
+      padding: 12px 14px;
+      border-radius: 14px;
+      line-height: 1.5;
+      font-size: 14.5px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .msg.user {
+      align-self: flex-end;
+      background: linear-gradient(135deg, rgba(91,140,255,0.35), rgba(59,110,245,0.25));
+      border: 1px solid rgba(91,140,255,0.3);
+    }
+    .msg.bot {
+      align-self: flex-start;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+    }
+    .msg .meta {
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+    .msg img, .msg video {
+      display: block;
+      max-width: 100%;
+      border-radius: 12px;
+      margin-top: 10px;
+      border: 1px solid var(--border);
+    }
+    .composer {
+      border-top: 1px solid var(--border);
+      padding: 12px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: end;
+    }
+    .composer textarea { min-height: 52px; max-height: 140px; resize: vertical; }
+
+    .side {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .side .panel { padding: 16px; }
+    .side h2 {
+      font-size: 15px;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .field { margin-bottom: 12px; }
+    .row-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+    .preview {
+      margin-top: 12px;
+      min-height: 80px;
+      border: 1px dashed var(--border);
+      border-radius: 12px;
+      padding: 10px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .preview img, .preview video {
+      width: 100%;
+      border-radius: 10px;
+      margin-top: 8px;
+    }
+    .log {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+      max-height: 120px;
+      overflow: auto;
+      white-space: pre-wrap;
+      background: rgba(0,0,0,0.25);
+      border-radius: 10px;
+      padding: 10px;
+      margin-top: 10px;
+    }
+    .hint { font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.4; }
+    a { color: var(--accent2); }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="brand">
+        <div class="logo">G</div>
+        <div>
+          <h1>Gemini API Playground <span>Chat · Ảnh · Video</span></h1>
+        </div>
+      </div>
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <span class="status-pill" id="healthPill">checking…</span>
+        <a class="btn secondary" href="/" style="text-decoration:none;">Dashboard</a>
+      </div>
+    </header>
+
+    <div class="panel config">
+      <div>
+        <label>Base URL</label>
+        <input id="baseUrl" value="" placeholder="http://127.0.0.1:8000" />
+      </div>
+      <div>
+        <label>API Key (Bearer)</label>
+        <input id="apiKey" type="password" placeholder="sk-..." autocomplete="off" />
+      </div>
+      <div>
+        <label>Chat model</label>
+        <select id="chatModel">
+          <option value="gemini" selected>gemini (chat text)</option>
+          <option value="gemini-3-flash">gemini-3-flash (chat text)</option>
+          <option value="gemini-3-pro">gemini-3-pro (chat text)</option>
+          <option value="gemini-web-search">gemini-web-search</option>
+          <option value="gemini-research">gemini-research</option>
+          <option value="gemini-image">gemini-image (ÉP tạo ảnh)</option>
+          <option value="gemini-video">gemini-video (ÉP tạo video)</option>
+        </select>
+      </div>
+      <button class="btn secondary" id="btnSave" type="button">Lưu cấu hình</button>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="chat">💬 Chat</button>
+      <button class="tab" data-tab="image">🖼️ Tạo ảnh</button>
+      <button class="tab" data-tab="video">🎬 Tạo video</button>
+    </div>
+
+    <div class="main-grid">
+      <!-- CHAT -->
+      <section class="panel chat-panel" id="pane-chat">
+        <div class="messages" id="messages">
+          <div class="msg bot">
+            <div class="meta">assistant</div>
+            Xin chào! Đây là trang test API.
+            • Chat thường: để model = <b>gemini (chat text)</b> — chỉ trả lời chữ
+            • Tạo ảnh: dùng tab <b>Tạo ảnh</b> (không đổi model chat)
+            • Tạo video: dùng tab <b>Tạo video</b>
+            • Chỉ chọn gemini-image / gemini-video khi muốn ép media trong khung chat
+          </div>
+        </div>
+        <div class="composer">
+          <textarea id="chatInput" placeholder="Nhập tin nhắn… (Enter gửi, Shift+Enter xuống dòng)"></textarea>
+          <button class="btn" id="btnSend">Gửi</button>
+        </div>
+      </section>
+
+      <aside class="side">
+        <!-- IMAGE -->
+        <section class="panel" id="pane-image">
+          <h2>🖼️ Tạo ảnh</h2>
+          <div class="field">
+            <label>Prompt ảnh</label>
+            <textarea id="imgPrompt" rows="3" placeholder="Ví dụ: con mèo vàng dễ thương, ánh sáng mềm, photorealistic"></textarea>
+          </div>
+          <div class="row-btns">
+            <button class="btn pink" id="btnImage">Generate Image</button>
+            <button class="btn secondary" id="btnImageChat">Gửi qua Chat (gemini-image)</button>
+          </div>
+          <p class="hint">API: <code>POST /v1/images/generations</code> · backend Flash + fallback official key</p>
+          <div class="preview" id="imgPreview">Chưa có ảnh</div>
+          <div class="log" id="imgLog"></div>
+        </section>
+
+        <!-- VIDEO -->
+        <section class="panel" id="pane-video">
+          <h2>🎬 Tạo video</h2>
+          <div class="field">
+            <label>Prompt video</label>
+            <textarea id="vidPrompt" rows="3" placeholder="Ví dụ: con mèo đi trên cỏ, nắng nhẹ"></textarea>
+          </div>
+          <div class="row-btns">
+            <button class="btn cyan" id="btnVideo">Generate Video</button>
+            <button class="btn secondary" id="btnVideoChat">Gửi qua Chat (gemini-video)</button>
+          </div>
+          <p class="hint">API: <code>POST /v1/videos/generations</code> · fallback animate ảnh→MP4 nếu Gemini không trả URL</p>
+          <div class="preview" id="vidPreview">Chưa có video</div>
+          <div class="log" id="vidLog"></div>
+        </section>
+      </aside>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const storageKey = "gemini_playground_cfg";
+
+    function loadCfg() {
+      const def = {
+        baseUrl: window.location.origin || "http://127.0.0.1:8000",
+        apiKey: localStorage.getItem("gemini_playground_key") || "",
+        model: "gemini",
+      };
+      try {
+        const raw = localStorage.getItem(storageKey);
+        if (raw) return { ...def, ...JSON.parse(raw) };
+      } catch {}
+      return def;
+    }
+
+    function saveCfg() {
+      const cfg = {
+        baseUrl: $("baseUrl").value.trim().replace(/\/$/, "") || window.location.origin,
+        apiKey: $("apiKey").value.trim(),
+        model: $("chatModel").value,
+      };
+      localStorage.setItem(storageKey, JSON.stringify(cfg));
+      localStorage.setItem("gemini_playground_key", cfg.apiKey);
+      return cfg;
+    }
+
+    function cfg() {
+      return {
+        baseUrl: $("baseUrl").value.trim().replace(/\/$/, "") || window.location.origin,
+        apiKey: $("apiKey").value.trim(),
+        model: $("chatModel").value,
+      };
+    }
+
+    function headers() {
+      const c = cfg();
+      const h = { "Content-Type": "application/json", Accept: "application/json" };
+      if (c.apiKey) h["Authorization"] = "Bearer " + c.apiKey;
+      return h;
+    }
+
+    async function api(path, options = {}) {
+      const c = cfg();
+      const url = c.baseUrl + path;
+      const res = await fetch(url, {
+        ...options,
+        headers: { ...headers(), ...(options.headers || {}) },
+      });
+      let data = null;
+      const text = await res.text();
+      try { data = JSON.parse(text); } catch { data = { _raw: text }; }
+      if (!res.ok) {
+        const detail = data?.detail;
+        let msg;
+        if (typeof detail === "string") msg = detail;
+        else if (detail && typeof detail === "object") {
+          msg = detail.message || detail.detail || JSON.stringify(detail);
+          if (detail.hint) msg += "\n\n💡 " + detail.hint;
+          if (detail.attempts) msg += "\n\nattempts: " + JSON.stringify(detail.attempts);
+        } else if (data?._raw) {
+          msg = `Server ${res.status}: ${data._raw.slice(0, 300)}\n\n💡 Nếu đang dùng Docker trên Windows, hãy chạy HOST: start_host_24_7.ps1 (cookie Gemini không hoạt động tốt trong Docker NAT).`;
+        } else {
+          msg = JSON.stringify(data) || res.statusText;
+        }
+        throw new Error(msg || res.statusText);
+      }
+      return data;
+    }
+
+    function addMsg(role, content, media = []) {
+      const box = $("messages");
+      const el = document.createElement("div");
+      el.className = "msg " + (role === "user" ? "user" : "bot");
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      meta.textContent = role === "user" ? "you" : "assistant";
+      el.appendChild(meta);
+      const body = document.createElement("div");
+      body.textContent = content || "";
+      el.appendChild(body);
+      for (const m of media) {
+        if (m.type === "image" && m.url) {
+          const img = document.createElement("img");
+          img.src = absUrl(m.url);
+          img.alt = m.title || "image";
+          el.appendChild(img);
+        }
+        if (m.type === "video" && m.url) {
+          const v = document.createElement("video");
+          v.src = absUrl(m.url);
+          v.controls = true;
+          v.playsInline = true;
+          el.appendChild(v);
+        }
+      }
+      box.appendChild(el);
+      box.scrollTop = box.scrollHeight;
+      return el;
+    }
+
+    function absUrl(u) {
+      if (!u) return u;
+      if (u.startsWith("http")) return u;
+      return cfg().baseUrl + (u.startsWith("/") ? u : "/" + u);
+    }
+
+    function setLog(id, obj) {
+      $(id).textContent = typeof obj === "string" ? obj : JSON.stringify(obj, null, 2);
+    }
+
+    async function refreshHealth() {
+      const pill = $("healthPill");
+      try {
+        const c = cfg();
+        const res = await fetch(c.baseUrl + "/health");
+        const j = await res.json();
+        if (j.ready) {
+          pill.textContent = `ready · providers ${j.active_providers ?? "?"} · ext ${j.extension_connected ? "on" : "off"}`;
+          pill.className = "status-pill ok";
+        } else {
+          pill.textContent = "degraded · " + (j.detail || "no provider");
+          pill.className = "status-pill bad";
+        }
+      } catch (e) {
+        pill.textContent = "offline";
+        pill.className = "status-pill bad";
+      }
+    }
+
+    async function sendChat(text, modelOverride) {
+      const content = (text || $("chatInput").value).trim();
+      if (!content) return;
+      if (!$("apiKey").value.trim()) {
+        alert("Nhập API Key (Dashboard → API Keys).");
+        return;
+      }
+      $("chatInput").value = "";
+      addMsg("user", content);
+      const thinking = addMsg("bot", "… đang gọi API …");
+      $("btnSend").disabled = true;
+      try {
+        const data = await api("/v1/chat/completions", {
+          method: "POST",
+          body: JSON.stringify({
+            model: modelOverride || cfg().model,
+            stream: false,
+            messages: [{ role: "user", content }],
+          }),
+        });
+        const reply = data?.choices?.[0]?.message?.content || "(empty)";
+        const media = [];
+        const gm = data?.gemini_media || {};
+        for (const im of gm.images || []) media.push({ type: "image", url: im.url, title: im.title });
+        for (const v of gm.videos || []) media.push({ type: "video", url: v.url, title: v.title });
+        // also parse markdown images/videos from text
+        thinking.remove();
+        addMsg("bot", reply, media);
+      } catch (e) {
+        thinking.querySelector("div:last-child").textContent = "Lỗi: " + e.message;
+      } finally {
+        $("btnSend").disabled = false;
+      }
+    }
+
+    async function genImage() {
+      const prompt = $("imgPrompt").value.trim();
+      if (!prompt) return alert("Nhập prompt ảnh");
+      if (!$("apiKey").value.trim()) return alert("Nhập API Key");
+      $("btnImage").disabled = true;
+      $("imgPreview").textContent = "Đang tạo ảnh…";
+      setLog("imgLog", "calling /v1/images/generations …");
+      try {
+        const data = await api("/v1/images/generations", {
+          method: "POST",
+          body: JSON.stringify({ prompt, n: 1 }),
+        });
+        setLog("imgLog", data);
+        const url = data?.data?.[0]?.url;
+        if (url) {
+          $("imgPreview").innerHTML = `<div>backend: <b>${data.backend || "?"}</b></div><img src="${absUrl(url)}" alt="gen" />`;
+          addMsg("bot", "Ảnh đã tạo: " + prompt, [{ type: "image", url }]);
+        } else {
+          $("imgPreview").textContent = "Không có URL ảnh. Xem log.";
+        }
+      } catch (e) {
+        $("imgPreview").textContent = "Lỗi: " + e.message;
+        setLog("imgLog", e.message);
+      } finally {
+        $("btnImage").disabled = false;
+      }
+    }
+
+    async function genVideo() {
+      const prompt = $("vidPrompt").value.trim();
+      if (!prompt) return alert("Nhập prompt video");
+      if (!$("apiKey").value.trim()) return alert("Nhập API Key");
+      $("btnVideo").disabled = true;
+      $("vidPreview").textContent = "Đang tạo video (có thể 1–3 phút)…";
+      setLog("vidLog", "calling /v1/videos/generations …");
+      try {
+        const data = await api("/v1/videos/generations", {
+          method: "POST",
+          body: JSON.stringify({ prompt }),
+        });
+        setLog("vidLog", data);
+        const url = data?.data?.[0]?.url;
+        const status = data?.status || "";
+        const backend = data?.backend || "";
+        if (url) {
+          $("vidPreview").innerHTML =
+            `<div>status: <b>${status}</b> · backend: <b>${backend}</b></div>` +
+            `<video src="${absUrl(url)}" controls playsinline></video>` +
+            (data.keyframe ? `<div class="hint">keyframe: <a href="${absUrl(data.keyframe)}" target="_blank">${data.keyframe}</a></div>` : "");
+          addMsg("bot", `Video: ${prompt}\n[${status} / ${backend}]`, [{ type: "video", url }]);
+        } else {
+          $("vidPreview").textContent = data.message || "Không có URL video.";
+        }
+      } catch (e) {
+        $("vidPreview").textContent = "Lỗi: " + e.message;
+        setLog("vidLog", e.message);
+      } finally {
+        $("btnVideo").disabled = false;
+      }
+    }
+
+    // tabs
+    document.querySelectorAll(".tab").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
+        tab.classList.add("active");
+        const name = tab.dataset.tab;
+        if (name === "image") $("imgPrompt").focus();
+        if (name === "video") $("vidPrompt").focus();
+        if (name === "chat") $("chatInput").focus();
+      });
+    });
+
+    // init
+    const initial = loadCfg();
+    $("baseUrl").value = initial.baseUrl;
+    $("apiKey").value = initial.apiKey;
+    // Nếu lần trước lỡ lưu gemini-image/video, reset về chat text
+    const safeModel = ["gemini-image", "gemini-video"].includes(initial.model)
+      ? "gemini"
+      : (initial.model || "gemini");
+    $("chatModel").value = safeModel;
+    $("btnSave").onclick = () => { saveCfg(); alert("Đã lưu cấu hình trên trình duyệt."); };
+    $("btnSend").onclick = () => sendChat();
+    $("btnImage").onclick = genImage;
+    $("btnVideo").onclick = genVideo;
+    $("btnImageChat").onclick = () => {
+      const p = $("imgPrompt").value.trim();
+      if (!p) return alert("Nhập prompt ảnh");
+      // Chỉ override 1 lần — KHÔNG đổi dropdown chat (tránh chat thường bị ép tạo ảnh)
+      sendChat(p, "gemini-image");
+    };
+    $("btnVideoChat").onclick = () => {
+      const p = $("vidPrompt").value.trim();
+      if (!p) return alert("Nhập prompt video");
+      sendChat(p, "gemini-video");
+    };
+    $("chatInput").addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendChat();
+      }
+    });
+
+    refreshHealth();
+    setInterval(refreshHealth, 8000);
+  </script>
+</body>
+</html>

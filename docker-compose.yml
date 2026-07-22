@@ -5,12 +5,42 @@ services:
     ports:
       - "8000:8000"
     environment:
-      # You can override these cookies with your own values
-      - SECURE_1PSID=g.a000_AjYuI_xzJbWKdaQ-Vh1O4BvZqNjq5NuDjfrrE2U8AKnAjtzZcyQ8Y1S3PQx26KDRPiWjAACgYKAZ8SARYSFQHGX2MiWbE39ZNBHCahqqwmum1h8hoVAUF8yKp70iSvj-LLuwyTioABObAe0076
-      - SECURE_1PSIDTS=sidts-CjYByojQUx_NAcNLc5_XGJdNzcO5e54xsvLiMGb81JlyQpsnCzc3dpBERsT-JebpUzxLs9GeyaAQAA
+      # Leave empty for 24/7 Extension-driven cookies (recommended)
+      - SECURE_1PSID=${SECURE_1PSID:-}
+      - SECURE_1PSIDTS=${SECURE_1PSIDTS:-}
+      - API_KEY=${API_KEY:-}
+      - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD:-123456}
+      # 24/7 tuning
+      - SESSION_MAX_COUNT=${SESSION_MAX_COUNT:-500}
+      - SESSION_TTL_SECONDS=${SESSION_TTL_SECONDS:-3600}
+      - ACCOUNT_COOLDOWN_SECONDS=${ACCOUNT_COOLDOWN_SECONDS:-120}
+      - MAX_FAILOVER_ATTEMPTS=${MAX_FAILOVER_ATTEMPTS:-3}
+      - WATCHDOG_INTERVAL_SECONDS=${WATCHDOG_INTERVAL_SECONDS:-45}
+      - PROACTIVE_COOKIE_ON_EVERY_REQUEST=${PROACTIVE_COOKIE_ON_EVERY_REQUEST:-1}
+      - GEMINI_COOKIE_PATH=/app/gemini_cookies
     volumes:
       - ./api_keys.json:/app/api_keys.json
       - ./gemini_accounts.json:/app/gemini_accounts.json
       - ./gemini_agents.json:/app/gemini_agents.json
       - ./dashboard_config.json:/app/dashboard_config.json
+      - ./static:/app/static
+      - ./gemini_cookies:/app/gemini_cookies
     restart: unless-stopped
+    healthcheck:
+      # Liveness — process up (degraded still 200 while waiting for Extension)
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"

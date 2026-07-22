@@ -219,3 +219,12 @@ videofx_state.json
 scratch/
 
 
+
+# Runtime / local data
+logs/
+gemini_cookies/
+static/20*.png
+static/anim_*.mp4
+static/cat_from_image.mp4
+scratch/
+

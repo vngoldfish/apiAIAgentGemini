@@ -1,0 +1,8 @@
+{
+   "appDescription": {
+      "message": "Extension hỗ trợ Gemini-API. Tự động đồng bộ cookie Gemini về server local (cổng 8000)."
+   },
+   "appName": {
+      "message": "Gemini Auth Helper"
+   }
+}

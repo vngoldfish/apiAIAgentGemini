@@ -1,0 +1,8 @@
+{
+   "appDescription": {
+      "message": "Auth helper for Gemini-API gateway. Auto-syncs Gemini cookies to your local server (port 8000)."
+   },
+   "appName": {
+      "message": "Gemini Auth Helper"
+   }
+}
