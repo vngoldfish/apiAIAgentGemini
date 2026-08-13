@@ -10,14 +10,6 @@
       "service_worker": "background.js"
    },
    "content_scripts": [ {
-      "js": [ "content.js" ],
-      "matches": [ "https://labs.google/*" ],
-      "run_at": "document_idle"
-   }, {
-      "js": [ "content_grok.js" ],
-      "matches": [ "https://grok.com/*" ],
-      "run_at": "document_idle"
-   }, {
       "js": [ "content_gemini.js" ],
       "matches": [ "https://gemini.google.com/*" ],
       "run_at": "document_idle"
@@ -32,9 +24,6 @@
    "default_locale": "en",
    "description": "__MSG_appDescription__",
    "host_permissions": [
-      "https://labs.google/*",
-      "https://grok.com/*",
-      "https://*.grok.com/*",
       "https://gemini.google.com/*",
       "https://*.googleusercontent.com/*",
       "https://*.google.com/*",
@@ -57,8 +46,6 @@
    "version": "7.5.0",
    "web_accessible_resources": [ {
       "matches": [
-         "https://labs.google/*",
-         "https://grok.com/*",
          "https://gemini.google.com/*",
          "http://127.0.0.1/*",
          "http://localhost/*"

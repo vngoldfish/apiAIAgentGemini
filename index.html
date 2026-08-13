@@ -265,6 +265,80 @@
             100% { box-shadow: 0 0 0 0 rgba(255, 49, 49, 0); }
         }
 
+        /* Playground Custom Styles */
+        .pg-prompt-chip {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(0, 240, 255, 0.2);
+            color: var(--text-main);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            white-space: nowrap;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+        }
+        .pg-prompt-chip:hover {
+            background: linear-gradient(135deg, rgba(0, 240, 255, 0.2), rgba(138, 43, 226, 0.25));
+            border-color: var(--accent-cyan);
+            transform: translateY(-2px) scale(1.02);
+            box-shadow: 0 4px 15px var(--accent-cyan-glow);
+            color: #ffffff;
+        }
+        .pg-msg {
+            animation: fadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .pg-msg.user {
+            background: linear-gradient(135deg, rgba(0, 240, 255, 0.12), rgba(138, 43, 226, 0.12)) !important;
+            border: 1px solid rgba(0, 240, 255, 0.3) !important;
+            align-self: flex-end;
+            margin-left: auto;
+            box-shadow: 0 4px 20px rgba(0, 240, 255, 0.1);
+        }
+        .pg-msg img {
+            max-width: 100%;
+            border-radius: 14px;
+            margin-top: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.5);
+            transition: transform 0.3s ease;
+        }
+        .pg-msg img:hover {
+            transform: scale(1.01);
+        }
+        .pg-msg video {
+            max-width: 100%;
+            border-radius: 14px;
+            margin-top: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.5);
+        }
+
+        /* Glass Panel hover enhancements */
+        .glass-panel {
+            transition: transform 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+        }
+        .glass-panel:hover {
+            border-color: rgba(0, 240, 255, 0.25);
+            box-shadow: 0 8px 30px rgba(11, 7, 26, 0.6);
+        }
+
+        /* Tab Buttons Neon Active state */
+        .tab-btn {
+            position: relative;
+            overflow: hidden;
+            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .tab-btn.active {
+            background: linear-gradient(135deg, rgba(138, 43, 226, 0.25), rgba(0, 240, 255, 0.2)) !important;
+            border-color: var(--accent-cyan) !important;
+            color: #ffffff !important;
+            box-shadow: 0 0 15px rgba(0, 240, 255, 0.25);
+        }
+
         /* API endpoints cards */
         .api-docs-grid {
             display: grid;
@@ -945,6 +1019,9 @@
             <button class="tab-btn" onclick="switchTab('providers')">
                 <i class="fa-solid fa-users-gear"></i> Providers
             </button>
+            <button class="tab-btn" onclick="switchTab('playground')" id="nav-btn-playground" style="background: linear-gradient(135deg, rgba(0, 240, 255, 0.15), rgba(138, 43, 226, 0.15)); border: 1px solid rgba(0, 240, 255, 0.3);">
+                <i class="fa-solid fa-wand-magic-sparkles" style="color: var(--accent-cyan);"></i> Thử Nghiệm AI
+            </button>
             <button class="tab-btn" onclick="switchTab('keys')">
                 <i class="fa-solid fa-key"></i> API Keys
             </button>
@@ -1466,6 +1543,228 @@
             </div>
         </div>
 
+        <!-- Tab: Playground / Thử Nghiệm AI (Chat, Ảnh, Video) -->
+        <div id="playground" class="tab-content">
+            <div class="pg-header-card" style="background: rgba(18, 12, 38, 0.5); border: 1px solid var(--border-color); border-radius: 16px; padding: 20px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 15px; backdrop-filter: blur(12px);">
+                <div>
+                    <h2 style="font-size: 20px; font-weight: 700; background: linear-gradient(135deg, var(--accent-cyan), var(--primary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; display: flex; align-items: center; gap: 10px;">
+                        <i class="fa-solid fa-wand-magic-sparkles" style="-webkit-text-fill-color: initial; color: var(--accent-cyan);"></i> Thử Nghiệm AI Studio (Chat · Ảnh · Video)
+                    </h2>
+                    <p style="color: var(--text-muted); font-size: 13px; margin-top: 4px;">Trải nghiệm giao tiếp Gemini AI, tạo ảnh Imagen 3 và tạo video Veo chất lượng cao trực tiếp trên Studio.</p>
+                </div>
+                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                    <div id="pg-health-badge" class="status-badge active" style="font-size: 12px; padding: 6px 14px; border-radius: 20px; background: rgba(57, 255, 20, 0.1); border: 1px solid rgba(57, 255, 20, 0.3); color: var(--accent-green); display: flex; align-items: center; gap: 6px;">
+                        <span class="pulse-indicator green"></span> <span id="pg-health-text">Đang kiểm tra kết nối...</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Activation Banner (Shows if health is degraded or no active providers) -->
+            <div id="pg-quick-activate-banner" style="background: rgba(255, 49, 49, 0.08); border: 1px solid rgba(255, 49, 49, 0.3); border-radius: 16px; padding: 18px; margin-bottom: 20px; display: none;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
+                    <div style="flex: 1; min-width: 280px;">
+                        <h4 style="color: var(--accent-red); font-size: 15px; font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 8px;">
+                            <i class="fa-solid fa-triangle-exclamation"></i> Cần Kích Hoạt Provider Đang Hoạt Động
+                        </h4>
+                        <p style="color: var(--text-muted); font-size: 13px; margin: 0; line-height: 1.5;">
+                            Tài khoản Gemini hiện tại bị ngắt kết nối/hết hạn Cookie. Hãy dán <b>Gemini API Key</b> (miễn phí từ <a href="https://aistudio.google.com" target="_blank" style="color: var(--accent-cyan); font-weight: 600;">aistudio.google.com</a>) hoặc Cookie <code>__Secure-1PSID</code> vào bên phải để kích hoạt ứng dụng chạy ngay 100%!
+                        </p>
+                    </div>
+                    <div style="display: flex; gap: 10px; flex: 1; max-width: 480px; min-width: 280px;">
+                        <input type="text" id="pg-quick-key-input" class="custom-input" placeholder="Dán Gemini API Key (AIzaSy...) hoặc Cookie vào đây..." style="flex: 1; height: 40px; font-size: 13px;">
+                        <button class="btn" onclick="quickActivateProvider()" style="height: 40px; padding: 0 20px; font-size: 13px; font-weight: 600; background: linear-gradient(135deg, var(--accent-green), #059669); border: none; white-space: nowrap; cursor: pointer;">
+                            <i class="fa-solid fa-bolt"></i> Kích Hoạt Ngay
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Playground Config Bar -->
+            <div style="background: rgba(18, 12, 38, 0.6); border: 1px solid var(--border-color); border-radius: 16px; padding: 18px; margin-bottom: 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; align-items: end; backdrop-filter: blur(16px);">
+                <div>
+                    <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px; font-weight: 600; display: block; margin-bottom: 6px;">
+                        <i class="fa-solid fa-key" style="color: var(--accent-cyan);"></i> API Key
+                    </label>
+                    <input type="password" id="pg-api-key" class="custom-input" placeholder="Dùng sk-gemini-... hoặc để trống" style="width: 100%; height: 40px; font-size: 13px;">
+                </div>
+
+                <div>
+                    <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px; font-weight: 600; display: block; margin-bottom: 6px;">
+                        <i class="fa-solid fa-microchip" style="color: var(--primary);"></i> Mô hình Gemini / Model
+                    </label>
+                    <select id="pg-model-select" class="custom-input" style="width: 100%; height: 40px; font-size: 13px; background: rgba(11, 7, 26, 0.8);">
+                        <option value="gemini">Gemini 2.5 Flash (Mặc định)</option>
+                        <option value="gemini-2.5-pro">Gemini 2.5 Pro (Suy luận sâu)</option>
+                        <option value="gemini-3.0-flash">Gemini 3.0 Flash</option>
+                        <option value="imagen-3.0-generate-002">Imagen 3 (Chuyên sinh ảnh)</option>
+                        <option value="veo-2.0-generate-001">Veo 2 (Chuyên sinh video)</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px; font-weight: 600; display: block; margin-bottom: 6px;">
+                        <i class="fa-solid fa-user-gear" style="color: #ff9800;"></i> System Instruction (Hướng dẫn)
+                    </label>
+                    <input type="text" id="pg-sys-prompt" class="custom-input" placeholder="Ví dụ: Bạn là trợ lý lập trình chuyên nghiệp..." style="width: 100%; height: 40px; font-size: 13px;">
+                </div>
+
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn" onclick="savePgConfig()" style="height: 40px; padding: 0 16px; font-size: 13px; font-weight: 600; flex: 1; justify-content: center; background: linear-gradient(135deg, var(--accent-cyan), var(--primary)); border: none;">
+                        <i class="fa-solid fa-floppy-disk"></i> Lưu Cấu Hình
+                    </button>
+                    <button class="tab-btn" onclick="resetPgChat()" style="height: 40px; padding: 0 14px; font-size: 13px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); color: var(--text-main);">
+                        <i class="fa-solid fa-rotate-left"></i> Xóa Chat
+                    </button>
+                </div>
+            </div>
+
+            <!-- Playground Sub-Tabs Switcher -->
+            <div style="display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; flex-wrap: wrap;">
+                <button id="pg-subtab-chat-btn" class="tab-btn active" onclick="switchPgSubTab('chat')" style="border-radius: 12px; padding: 10px 20px; font-weight: 600;">
+                    <i class="fa-solid fa-comments" style="color: var(--accent-cyan);"></i> 💬 Chat AI
+                </button>
+                <button id="pg-subtab-image-btn" class="tab-btn" onclick="switchPgSubTab('image')" style="border-radius: 12px; padding: 10px 20px; font-weight: 600;">
+                    <i class="fa-solid fa-image" style="color: #f472b6;"></i> 🎨 Tạo Ảnh (Imagen)
+                </button>
+                <button id="pg-subtab-video-btn" class="tab-btn" onclick="switchPgSubTab('video')" style="border-radius: 12px; padding: 10px 20px; font-weight: 600;">
+                    <i class="fa-solid fa-video" style="color: #38bdf8;"></i> 🎬 Tạo Video (Veo)
+                </button>
+                <button id="pg-subtab-api-btn" class="tab-btn" onclick="switchPgSubTab('api')" style="border-radius: 12px; padding: 10px 20px; font-weight: 600;">
+                    <i class="fa-solid fa-code" style="color: #34d399;"></i> ⚡ cURL & Raw Logs
+                </button>
+            </div>
+
+            <!-- SECTION 1: CHAT AI STUDIO -->
+            <div id="pg-sec-chat" class="pg-sec" style="display: block;">
+                <!-- Quick Prompt Templates -->
+                <div style="display: flex; gap: 8px; overflow-x: auto; padding-bottom: 10px; margin-bottom: 15px;">
+                    <button class="pg-prompt-chip" onclick="applyPgPrompt('Hãy viết một đoạn code Python FastAPI đơn giản có hỗ trợ Swagger UI.')">
+                        <i class="fa-solid fa-code" style="color: var(--accent-cyan);"></i> Viết code Python FastAPI
+                    </button>
+                    <button class="pg-prompt-chip" onclick="applyPgPrompt('Vẽ cho tôi một bức tranh phong cảnh thành phố cyberpunk về đêm với ánh đèn neon rực rỡ.')">
+                        <i class="fa-solid fa-image" style="color: #f472b6;"></i> Vẽ ảnh thành phố Cyberpunk
+                    </button>
+                    <button class="pg-prompt-chip" onclick="applyPgPrompt('Tạo một video ngắn tả cảnh sóng biển vỗ vào bãi cát vàng dưới ánh hoàng hôn.')">
+                        <i class="fa-solid fa-film" style="color: #38bdf8;"></i> Tạo video biển hoàng hôn
+                    </button>
+                    <button class="pg-prompt-chip" onclick="applyPgPrompt('Tóm tắt những ưu điểm nổi bật của Gemini 2.5 Flash so với các mô hình trước.')">
+                        <i class="fa-solid fa-bolt" style="color: var(--accent-green);"></i> Ưu điểm Gemini Flash
+                    </button>
+                </div>
+
+                <!-- Chat Output Messages Box -->
+                <div id="pg-chat-box" style="background: rgba(11, 7, 26, 0.6); border: 1px solid var(--border-color); border-radius: 16px; height: 480px; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; backdrop-filter: blur(10px); margin-bottom: 15px;">
+                    <div class="pg-msg assistant" style="display: flex; gap: 12px; background: rgba(138, 43, 226, 0.08); border: 1px solid rgba(138, 43, 226, 0.2); padding: 14px 18px; border-radius: 14px; max-width: 85%;">
+                        <div style="width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, var(--accent-cyan), var(--primary)); display: grid; place-items: center; flex-shrink: 0; font-weight: bold; font-size: 14px;">🤖</div>
+                        <div style="font-size: 14px; line-height: 1.6; color: var(--text-main);">
+                            Xin chào! Tôi là trợ lý AI Gemini. Bạn có thể trò chuyện, yêu cầu tôi viết mã, sáng tạo nội dung, hoặc tạo <b>Ảnh (Imagen 3)</b> và <b>Video (Veo)</b> trực tiếp tại đây!
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Chat Input Form -->
+                <div style="display: flex; gap: 10px; align-items: flex-end; background: rgba(18, 12, 38, 0.8); border: 1px solid var(--border-color); border-radius: 16px; padding: 12px 16px; backdrop-filter: blur(12px);">
+                    <textarea id="pg-chat-input" class="custom-input" placeholder="Nhập câu hỏi hoặc yêu cầu tạo ảnh/video tại đây... (Nhấn Enter để gửi, Shift+Enter để xuống dòng)" rows="2" style="flex: 1; background: transparent; border: none; resize: none; font-size: 14px; line-height: 1.5; padding: 4px;" onkeydown="handlePgChatKeyDown(event)"></textarea>
+
+                    <button id="pg-btn-send" class="btn" onclick="sendPgChat()" style="height: 42px; padding: 0 24px; font-size: 14px; font-weight: 600; border-radius: 12px; background: linear-gradient(135deg, var(--accent-cyan), var(--primary)); border: none; justify-content: center;">
+                        <i class="fa-solid fa-paper-plane"></i> Gửi
+                    </button>
+                </div>
+            </div>
+
+            <!-- SECTION 2: TẠO ẢNH AI (IMAGEN 3) -->
+            <div id="pg-sec-image" class="pg-sec" style="display: none;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px;">
+                    <div style="background: rgba(18, 12, 38, 0.6); border: 1px solid var(--border-color); border-radius: 16px; padding: 20px; backdrop-filter: blur(12px);">
+                        <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                            <i class="fa-solid fa-palette" style="color: #f472b6;"></i> Sáng Tạo Hình Ảnh AI (Imagen 3)
+                        </h3>
+                        <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 15px;">Mô tả chi tiết bức ảnh bạn muốn tạo. Hỗ trợ tiếng Việt và tiếng Anh.</p>
+
+                        <div style="margin-bottom: 15px;">
+                            <label style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 6px; font-weight: 500;">Prompt Mô Tả Ảnh:</label>
+                            <textarea id="pg-img-prompt" class="custom-input" rows="4" placeholder="Mô tả bức ảnh... Ví dụ: Mèo phi hành gia đang lướt sóng trên dải ngân hà, phong cách 3D render cực nét" style="width: 100%; font-size: 14px;"></textarea>
+                        </div>
+
+                        <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
+                            <button class="btn" id="pg-btn-gen-img" onclick="genPgImage()" style="flex: 1; height: 42px; justify-content: center; background: linear-gradient(135deg, #ec4899, #a855f7); border: none; font-weight: 600;">
+                                <i class="fa-solid fa-wand-magic-sparkles"></i> Tạo Ảnh (/v1/images)
+                            </button>
+                            <button class="tab-btn" id="pg-btn-chat-img" onclick="sendPgChatFromImagePrompt()" style="padding: 0 16px; border: 1px solid var(--border-color); font-size: 13px; background: rgba(255,255,255,0.05); color: var(--text-main);">
+                                <i class="fa-solid fa-comments"></i> Gửi qua Chat
+                            </button>
+                        </div>
+
+                        <div style="font-size: 12px; color: var(--text-muted); line-height: 1.5;">
+                            💡 <b>Mẹo</b>: Bạn có thể chọn cách gửi qua API Sinh Ảnh chuẩn <code>/v1/images/generations</code> hoặc chat trực tiếp với mô hình <code>gemini-image</code>.
+                        </div>
+                    </div>
+
+                    <div style="background: rgba(11, 7, 26, 0.6); border: 1px solid var(--border-color); border-radius: 16px; padding: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 320px; backdrop-filter: blur(12px);" id="pg-img-result-box">
+                        <i class="fa-solid fa-image" style="font-size: 48px; color: rgba(255,255,255,0.1); margin-bottom: 12px;"></i>
+                        <div style="color: var(--text-muted); font-size: 14px; text-align: center;">Ảnh vừa tạo sẽ hiển thị tại đây</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECTION 3: TẠO VIDEO AI (VEO 2) -->
+            <div id="pg-sec-video" class="pg-sec" style="display: none;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px;">
+                    <div style="background: rgba(18, 12, 38, 0.6); border: 1px solid var(--border-color); border-radius: 16px; padding: 20px; backdrop-filter: blur(12px);">
+                        <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                            <i class="fa-solid fa-film" style="color: #38bdf8;"></i> Sáng Tạo Video AI (Veo 2)
+                        </h3>
+                        <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 15px;">Mô tả kịch bản video chuyển động ngắn (khoảng 3–10 giây).</p>
+
+                        <div style="margin-bottom: 15px;">
+                            <label style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 6px; font-weight: 500;">Prompt Kịch Bản Video:</label>
+                            <textarea id="pg-vid-prompt" class="custom-input" rows="4" placeholder="Mô tả cảnh chuyển động... Ví dụ: Camera lướt chậm qua thành phố cổ ven biển dưới mưa rào nhẹ, ánh đèn đường lung linh" style="width: 100%; font-size: 14px;"></textarea>
+                        </div>
+
+                        <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
+                            <button class="btn" id="pg-btn-gen-vid" onclick="genPgVideo()" style="flex: 1; height: 42px; justify-content: center; background: linear-gradient(135deg, #06b6d4, #3b82f6); border: none; font-weight: 600;">
+                                <i class="fa-solid fa-play"></i> Tạo Video (/v1/videos)
+                            </button>
+                            <button class="tab-btn" id="pg-btn-chat-vid" onclick="sendPgChatFromVideoPrompt()" style="padding: 0 16px; border: 1px solid var(--border-color); font-size: 13px; background: rgba(255,255,255,0.05); color: var(--text-main);">
+                                <i class="fa-solid fa-comments"></i> Gửi qua Chat
+                            </button>
+                        </div>
+
+                        <div style="font-size: 12px; color: var(--text-muted); line-height: 1.5;">
+                            💡 <b>Lưu ý</b>: Tiến trình tạo video Veo 2 có thể mất từ 1 đến 3 phút tùy thuộc vào độ chi tiết kịch bản.
+                        </div>
+                    </div>
+
+                    <div style="background: rgba(11, 7, 26, 0.6); border: 1px solid var(--border-color); border-radius: 16px; padding: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 320px; backdrop-filter: blur(12px);" id="pg-vid-result-box">
+                        <i class="fa-solid fa-video" style="font-size: 48px; color: rgba(255,255,255,0.1); margin-bottom: 12px;"></i>
+                        <div style="color: var(--text-muted); font-size: 14px; text-align: center;">Video vừa tạo sẽ hiển thị tại đây</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECTION 4: API INSPECTOR & RAW LOGS -->
+            <div id="pg-sec-api" class="pg-sec" style="display: none;">
+                <div style="background: rgba(18, 12, 38, 0.6); border: 1px solid var(--border-color); border-radius: 16px; padding: 20px; backdrop-filter: blur(12px);">
+                    <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                        <i class="fa-solid fa-terminal" style="color: #34d399;"></i> Realtime API Request & Response Inspector
+                    </h3>
+                    <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 15px;">Xem toàn bộ cURL request và dữ liệu JSON phản hồi trực tiếp từ Gateway.</p>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px;">
+                        <div>
+                            <label style="font-size: 12px; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 6px;">cURL Command mẫu:</label>
+                            <pre id="pg-curl-output" style="background: rgba(0,0,0,0.5); border: 1px solid var(--border-color); padding: 14px; border-radius: 10px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--accent-cyan); white-space: pre-wrap; overflow-x: auto; min-height: 240px;"></pre>
+                        </div>
+
+                        <div>
+                            <label style="font-size: 12px; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 6px;">JSON Phản Hồi Mới Nhất (Response Payload):</label>
+                            <pre id="pg-json-output" style="background: rgba(0,0,0,0.5); border: 1px solid var(--border-color); padding: 14px; border-radius: 10px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--accent-green); white-space: pre-wrap; overflow-x: auto; min-height: 240px;">Chưa có yêu cầu nào được gửi...</pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Tab: Guide -->
         <div id="guide" class="tab-content">
             <div class="guide-container">
@@ -1843,6 +2142,8 @@ print(response.choices[0].message.content)</code></pre>
             fetchProviders();
             fetchExtensionStatus();
             pingExtensionPageBridge();
+            loadPgConfig();
+            checkPgHealth();
             
             // Poll status every 5 seconds if not already running
             if (!window.statusIntervalId) {
@@ -1854,19 +2155,412 @@ print(response.choices[0].message.content)</code></pre>
             if (!window.extBridgePingId) {
                 window.extBridgePingId = setInterval(pingExtensionPageBridge, 10000);
             }
+            if (!window.pgHealthIntervalId) {
+                window.pgHealthIntervalId = setInterval(checkPgHealth, 8000);
+            }
+            setupPgImeListeners();
+        }
+
+        // --- Playground Studio Logic ---
+        const pgStorageKey = "gemini_playground_cfg";
+        let isPgComposing = false;
+        let lastPgCompositionEndTime = 0;
+
+        function setupPgImeListeners() {
+            const input = document.getElementById('pg-chat-input');
+            if (input && !input.dataset.imeBound) {
+                input.dataset.imeBound = "true";
+                input.addEventListener('compositionstart', () => {
+                    isPgComposing = true;
+                });
+                input.addEventListener('compositionend', () => {
+                    isPgComposing = false;
+                    lastPgCompositionEndTime = Date.now();
+                });
+            }
+        }
+
+        function getPgHeaders() {
+            const apiKey = document.getElementById('pg-api-key').value.trim();
+            const h = { "Content-Type": "application/json", "Accept": "application/json" };
+            if (apiKey) h["Authorization"] = "Bearer " + apiKey;
+            return h;
+        }
+
+        async function pgCallApi(path, options = {}, timeoutMs = 60000) {
+            const url = window.location.origin + path;
+            updatePgCurlLog(path, options);
+
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+            try {
+                const res = await fetch(url, {
+                    ...options,
+                    signal: controller.signal,
+                    headers: { ...getPgHeaders(), ...(options.headers || {}) }
+                });
+                clearTimeout(timer);
+                let data = null;
+                const text = await res.text();
+                try { data = JSON.parse(text); } catch { data = { _raw: text }; }
+                document.getElementById('pg-json-output').textContent = JSON.stringify(data, null, 2);
+                if (!res.ok) {
+                    const detail = data?.detail;
+                    let msg = typeof detail === 'string' ? detail : (detail?.message || data?._raw || res.statusText);
+                    if (detail && typeof detail === 'object') {
+                        if (detail.hint) msg += "\n💡 " + detail.hint;
+                    }
+                    throw new Error(msg);
+                }
+                return data;
+            } catch (err) {
+                clearTimeout(timer);
+                if (err.name === 'AbortError') {
+                    throw new Error('Yêu cầu vượt quá thời gian chờ (Timeout 60s). Máy chủ đang phản hồi chậm hoặc đang cập nhật Cookie Gemini.');
+                }
+                throw err;
+            }
+        }
+
+        function updatePgCurlLog(path, options) {
+            const apiKey = document.getElementById('pg-api-key').value.trim() || 'YOUR_API_KEY';
+            const body = options.body ? ` \\\n  -d '${options.body}'` : '';
+            const curl = `curl -X ${options.method || 'GET'} "${window.location.origin}${path}" \\\n  -H "Authorization: Bearer ${apiKey}" \\\n  -H "Content-Type: application/json"${body}`;
+            document.getElementById('pg-curl-output').textContent = curl;
+        }
+
+        function loadPgConfig() {
+            try {
+                const raw = localStorage.getItem(pgStorageKey);
+                if (raw) {
+                    const c = JSON.parse(raw);
+                    if (c.apiKey && document.getElementById('pg-api-key')) document.getElementById('pg-api-key').value = c.apiKey;
+                    if (c.model && document.getElementById('pg-model-select')) document.getElementById('pg-model-select').value = c.model;
+                    if (c.sysPrompt && document.getElementById('pg-sys-prompt')) document.getElementById('pg-sys-prompt').value = c.sysPrompt;
+                }
+            } catch (e) {}
+        }
+
+        function savePgConfig() {
+            const cfg = {
+                apiKey: document.getElementById('pg-api-key').value.trim(),
+                model: document.getElementById('pg-model-select').value,
+                sysPrompt: document.getElementById('pg-sys-prompt').value.trim(),
+            };
+            localStorage.setItem(pgStorageKey, JSON.stringify(cfg));
+            showToast('Đã lưu cấu hình Playground thành công!', 'success');
+        }
+
+        function switchPgSubTab(sub) {
+            ['chat', 'image', 'video', 'api'].forEach(s => {
+                const btn = document.getElementById(`pg-subtab-${s}-btn`);
+                const sec = document.getElementById(`pg-sec-${s}`);
+                if (btn) btn.classList.remove('active');
+                if (sec) sec.style.display = 'none';
+            });
+            const activeBtn = document.getElementById(`pg-subtab-${sub}-btn`);
+            const activeSec = document.getElementById(`pg-sec-${sub}`);
+            if (activeBtn) activeBtn.classList.add('active');
+            if (activeSec) activeSec.style.display = 'block';
+            if (sub === 'chat') setupPgImeListeners();
+        }
+
+        function addPgMsg(role, content, media = []) {
+            const box = document.getElementById('pg-chat-box');
+            if (!box) return;
+            const el = document.createElement('div');
+            el.className = `pg-msg ${role === 'user' ? 'user' : 'assistant'}`;
+            el.style.display = 'flex';
+            el.style.gap = '12px';
+            el.style.background = role === 'user' ? 'rgba(0, 240, 255, 0.08)' : 'rgba(138, 43, 226, 0.08)';
+            el.style.border = role === 'user' ? '1px solid rgba(0, 240, 255, 0.2)' : '1px solid rgba(138, 43, 226, 0.2)';
+            el.style.padding = '14px 18px';
+            el.style.borderRadius = '14px';
+            el.style.maxWidth = '85%';
+
+            const avatar = document.createElement('div');
+            avatar.style.width = '32px';
+            avatar.style.height = '32px';
+            avatar.style.borderRadius = '50%';
+            avatar.style.background = role === 'user' ? 'linear-gradient(135deg, #00f0ff, #0072ff)' : 'linear-gradient(135deg, var(--accent-cyan), var(--primary))';
+            avatar.style.display = 'grid';
+            avatar.style.placeItems = 'center';
+            avatar.style.flexShrink = '0';
+            avatar.style.fontWeight = 'bold';
+            avatar.style.fontSize = '14px';
+            avatar.textContent = role === 'user' ? '👤' : '🤖';
+            el.appendChild(avatar);
+
+            const contentDiv = document.createElement('div');
+            contentDiv.style.fontSize = '14px';
+            contentDiv.style.lineHeight = '1.6';
+            contentDiv.style.color = 'var(--text-main)';
+            contentDiv.style.flex = '1';
+            contentDiv.innerHTML = content ? content.replace(/\n/g, '<br>') : '';
+
+            for (const m of media) {
+                if (m.type === 'image' && m.url) {
+                    const img = document.createElement('img');
+                    img.src = m.url.startsWith('http') ? m.url : (window.location.origin + (m.url.startsWith('/') ? m.url : '/' + m.url));
+                    img.alt = m.title || 'generated image';
+                    contentDiv.appendChild(img);
+                }
+                if (m.type === 'video' && m.url) {
+                    const v = document.createElement('video');
+                    v.src = m.url.startsWith('http') ? m.url : (window.location.origin + (m.url.startsWith('/') ? m.url : '/' + m.url));
+                    v.controls = true;
+                    v.playsInline = true;
+                    contentDiv.appendChild(v);
+                }
+            }
+
+            el.appendChild(contentDiv);
+            box.appendChild(el);
+            box.scrollTop = box.scrollHeight;
+            return el;
+        }
+
+        let isPgChatSending = false;
+
+        async function sendPgChat(textOverride, modelOverride) {
+            if (isPgChatSending && !textOverride) return;
+            const input = document.getElementById('pg-chat-input');
+            const content = (textOverride || input.value).trim();
+            if (!content) return;
+
+            isPgChatSending = true;
+            if (!textOverride) input.value = '';
+
+            addPgMsg('user', content);
+            const thinking = addPgMsg('assistant', '<i>🤖 Đang xử lý câu hỏi...</i>');
+            const btnSend = document.getElementById('pg-btn-send');
+            if (btnSend) btnSend.disabled = true;
+
+            const selectedModel = modelOverride || document.getElementById('pg-model-select').value;
+            const sysPrompt = document.getElementById('pg-sys-prompt').value.trim();
+
+            const messages = [];
+            if (sysPrompt) messages.push({ role: 'system', content: sysPrompt });
+            messages.push({ role: 'user', content });
+
+            try {
+                const data = await pgCallApi('/v1/chat/completions', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        model: selectedModel,
+                        messages,
+                        stream: false
+                    })
+                });
+                if (thinking) thinking.remove();
+                const reply = data?.choices?.[0]?.message?.content || '(Không có dữ liệu phản hồi)';
+                const media = [];
+                const gm = data?.gemini_media || {};
+                for (const im of gm.images || []) media.push({ type: 'image', url: im.url, title: im.title });
+                for (const v of gm.videos || []) media.push({ type: 'video', url: v.url, title: v.title });
+                addPgMsg('assistant', reply, media);
+            } catch (e) {
+                if (thinking && thinking.lastElementChild) {
+                    thinking.lastElementChild.innerHTML = `<span style="color: var(--accent-red);"><i class="fa-solid fa-triangle-exclamation"></i> Lỗi: ${e.message}</span>`;
+                }
+            } finally {
+                isPgChatSending = false;
+                if (btnSend) btnSend.disabled = false;
+            }
+        }
+
+        async function genPgImage() {
+            const prompt = document.getElementById('pg-img-prompt').value.trim();
+            if (!prompt) return showToast('Vui lòng nhập prompt ảnh!', 'error');
+            const btn = document.getElementById('pg-btn-gen-img');
+            const resBox = document.getElementById('pg-img-result-box');
+            btn.disabled = true;
+            resBox.innerHTML = `<div style="text-align: center; color: var(--accent-cyan);"><i class="fa-solid fa-spinner fa-spin" style="font-size: 32px; margin-bottom: 10px;"></i><br>Đang sinh ảnh nghệ thuật Imagen 3...</div>`;
+
+            try {
+                const data = await pgCallApi('/v1/images/generations', {
+                    method: 'POST',
+                    body: JSON.stringify({ prompt, n: 1 })
+                });
+                const url = data?.data?.[0]?.url;
+                if (url) {
+                    const fullUrl = url.startsWith('http') ? url : (window.location.origin + (url.startsWith('/') ? url : '/' + url));
+                    resBox.innerHTML = `
+                        <div style="width: 100%; text-align: center;">
+                            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">Backend: <b>${data.backend || 'Imagen 3'}</b></div>
+                            <img src="${fullUrl}" alt="gen" style="max-width: 100%; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: 0 8px 30px rgba(0,0,0,0.5);">
+                            <div style="margin-top: 12px;">
+                                <a href="${fullUrl}" target="_blank" download class="btn" style="display: inline-flex; height: 36px; padding: 0 16px; font-size: 13px; text-decoration: none; align-items: center; justify-content: center; background: linear-gradient(135deg, var(--accent-cyan), var(--primary));">
+                                    <i class="fa-solid fa-download"></i> Tải Ảnh Về
+                                </a>
+                            </div>
+                        </div>`;
+                    addPgMsg('assistant', `Đã tạo ảnh cho prompt: <b>"${prompt}"</b>`, [{ type: 'image', url }]);
+                } else {
+                    resBox.innerHTML = `<div style="color: var(--accent-red);">Không nhận được URL ảnh. Xem chi tiết tab cURL & Logs.</div>`;
+                }
+            } catch (e) {
+                resBox.innerHTML = `<div style="color: var(--accent-red); text-align: center;"><i class="fa-solid fa-circle-xmark" style="font-size: 32px; margin-bottom: 10px;"></i><br>Lỗi: ${e.message}</div>`;
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        async function genPgVideo() {
+            const prompt = document.getElementById('pg-vid-prompt').value.trim();
+            if (!prompt) return showToast('Vui lòng nhập kịch bản video!', 'error');
+            const btn = document.getElementById('pg-btn-gen-vid');
+            const resBox = document.getElementById('pg-vid-result-box');
+            btn.disabled = true;
+            resBox.innerHTML = `<div style="text-align: center; color: var(--accent-cyan);"><i class="fa-solid fa-spinner fa-spin" style="font-size: 32px; margin-bottom: 10px;"></i><br>Đang khởi tạo tiến trình sinh video Veo 2 (có thể mất 1-3 phút)...</div>`;
+
+            try {
+                const data = await pgCallApi('/v1/videos/generations', {
+                    method: 'POST',
+                    body: JSON.stringify({ prompt })
+                });
+                const url = data?.data?.[0]?.url;
+                if (url) {
+                    const fullUrl = url.startsWith('http') ? url : (window.location.origin + (url.startsWith('/') ? url : '/' + url));
+                    resBox.innerHTML = `
+                        <div style="width: 100%; text-align: center;">
+                            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">Status: <b>${data.status || 'Success'}</b> · Backend: <b>${data.backend || 'Veo 2'}</b></div>
+                            <video src="${fullUrl}" controls playsinline style="max-width: 100%; border-radius: 12px; border: 1px solid var(--border-color);"></video>
+                            <div style="margin-top: 12px;">
+                                <a href="${fullUrl}" target="_blank" download class="btn" style="display: inline-flex; height: 36px; padding: 0 16px; font-size: 13px; text-decoration: none; align-items: center; justify-content: center; background: linear-gradient(135deg, #06b6d4, #3b82f6);">
+                                    <i class="fa-solid fa-download"></i> Tải Video Về
+                                </a>
+                            </div>
+                        </div>`;
+                    addPgMsg('assistant', `Đã tạo video cho prompt: <b>"${prompt}"</b>`, [{ type: 'video', url }]);
+                } else {
+                    resBox.innerHTML = `<div style="color: var(--accent-red);">${data.message || 'Không có URL video.'}</div>`;
+                }
+            } catch (e) {
+                resBox.innerHTML = `<div style="color: var(--accent-red); text-align: center;"><i class="fa-solid fa-circle-xmark" style="font-size: 32px; margin-bottom: 10px;"></i><br>Lỗi: ${e.message}</div>`;
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        function sendPgChatFromImagePrompt() {
+            const prompt = document.getElementById('pg-img-prompt').value.trim();
+            if (!prompt) return showToast('Vui lòng nhập prompt ảnh!', 'error');
+            switchPgSubTab('chat');
+            sendPgChat(prompt, 'gemini-image');
+        }
+
+        function sendPgChatFromVideoPrompt() {
+            const prompt = document.getElementById('pg-vid-prompt').value.trim();
+            if (!prompt) return showToast('Vui lòng nhập prompt video!', 'error');
+            switchPgSubTab('chat');
+            sendPgChat(prompt, 'gemini-video');
+        }
+
+        function applyPgPrompt(txt) {
+            document.getElementById('pg-chat-input').value = txt;
+            sendPgChat();
+        }
+
+        function handlePgChatKeyDown(e) {
+            const timeSinceComposition = Date.now() - lastPgCompositionEndTime;
+            if (e.isComposing || isPgComposing || e.keyCode === 229 || timeSinceComposition < 200) {
+                return;
+            }
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendPgChat();
+            }
+        }
+
+        function resetPgChat() {
+            const box = document.getElementById('pg-chat-box');
+            if (box) {
+                box.innerHTML = `
+                    <div class="pg-msg assistant" style="display: flex; gap: 12px; background: rgba(138, 43, 226, 0.08); border: 1px solid rgba(138, 43, 226, 0.2); padding: 14px 18px; border-radius: 14px; max-width: 85%;">
+                        <div style="width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, var(--accent-cyan), var(--primary)); display: grid; place-items: center; flex-shrink: 0; font-weight: bold; font-size: 14px;">🤖</div>
+                        <div style="font-size: 14px; line-height: 1.6; color: var(--text-main);">
+                            Cuộc trò chuyện đã được làm mới. Bạn có thể đặt câu hỏi hoặc yêu cầu tạo <b>Ảnh</b> / <b>Video</b> tiếp tục!
+                        </div>
+                    </div>`;
+            }
+            showToast('Đã xóa lịch sử trò chuyện!', 'info');
+        }
+
+        async function checkPgHealth() {
+            const badge = document.getElementById('pg-health-badge');
+            const text = document.getElementById('pg-health-text');
+            const banner = document.getElementById('pg-quick-activate-banner');
+            if (!badge || !text) return;
+            try {
+                const res = await fetch('/health');
+                const j = await res.json();
+                if (j.ready) {
+                    text.textContent = `Kết nối sẵn sàng · Active: ${j.active_providers ?? 1}`;
+                    badge.style.background = 'rgba(57, 255, 20, 0.1)';
+                    badge.style.borderColor = 'rgba(57, 255, 20, 0.3)';
+                    badge.style.color = 'var(--accent-green)';
+                    if (banner) banner.style.display = 'none';
+                } else {
+                    text.textContent = `Suy giảm kết nối (${j.detail || 'Cần kích hoạt Provider'})`;
+                    badge.style.background = 'rgba(255, 49, 49, 0.1)';
+                    badge.style.borderColor = 'rgba(255, 49, 49, 0.3)';
+                    badge.style.color = 'var(--accent-red)';
+                    if (banner) banner.style.display = 'block';
+                }
+            } catch (e) {
+                text.textContent = 'Mất kết nối với API Gateway';
+                badge.style.background = 'rgba(255, 49, 49, 0.1)';
+                badge.style.borderColor = 'rgba(255, 49, 49, 0.3)';
+                badge.style.color = 'var(--accent-red)';
+                if (banner) banner.style.display = 'block';
+            }
+        }
+
+        async function quickActivateProvider() {
+            const input = document.getElementById('pg-quick-key-input');
+            const val = input ? input.value.trim() : '';
+            if (!val) return showToast('Vui lòng nhập Gemini API Key hoặc Cookie!', 'error');
+
+            const isApiKey = val.startsWith('AIza');
+            const payload = isApiKey 
+                ? { name: "Google API Key", provider_type: "api_key", api_key: val }
+                : { name: "Manual Cookie", provider_type: "web", psid: val };
+
+            try {
+                const res = await fetch('/api/providers', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Dashboard-Token': dashboardToken
+                    },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Kết nối thất bại');
+                showToast('Kích hoạt Provider thành công! Ứng dụng đã sẵn sàng.', 'success');
+                if (input) input.value = '';
+                checkPgHealth();
+                fetchProviders();
+            } catch (e) {
+                showToast('Lỗi kích hoạt: ' + e.message, 'error');
+            }
         }
 
         function handleInitialRouting() {
             const path = window.location.pathname.substring(1);
-            const validTabs = ['overview', 'analytics', 'providers', 'keys', 'agents', 'traffic', 'guide'];
-            const activeTab = validTabs.includes(path) ? path : 'overview';
+            const validTabs = ['overview', 'analytics', 'providers', 'keys', 'agents', 'traffic', 'guide', 'playground', 'chat-test'];
+            let activeTab = validTabs.includes(path) ? path : 'overview';
+            if (activeTab === 'chat-test') activeTab = 'playground';
             switchTab(activeTab, false);
         }
 
         window.addEventListener('popstate', (event) => {
             const path = window.location.pathname.substring(1);
-            const validTabs = ['overview', 'analytics', 'providers', 'keys', 'agents', 'traffic', 'guide'];
-            const activeTab = validTabs.includes(path) ? path : 'overview';
+            const validTabs = ['overview', 'analytics', 'providers', 'keys', 'agents', 'traffic', 'guide', 'playground', 'chat-test'];
+            let activeTab = validTabs.includes(path) ? path : 'overview';
+            if (activeTab === 'chat-test') activeTab = 'playground';
             switchTab(activeTab, false);
         });
 

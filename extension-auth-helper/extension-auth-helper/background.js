@@ -1,8 +1,10 @@
 
 
 // Default to Gemini-API gateway port (8000). Override in Options if needed.
+// Supports full URL (e.g. https://api.example.com) for remote backend.
 let _syncPort = 8000;
 let _syncUrl = `http://127.0.0.1:${_syncPort}`;
+let _syncToken = ""; // Sync token for authenticating with remote backend
 
 // Last Gemini cookie-push result (surfaced in popup)
 let _geminiCookieMeta = {
@@ -22,29 +24,77 @@ let _pushInFlight = null;
 let _cookieChangeTimer = null;
 let _serverWantsCookies = true; // true until server confirms it has an active extension provider
 
-function _updateSyncPort(port) {
-    if (port && typeof port === "number" && port >= 1 && port <= 65535) {
+/**
+ * Update sync target. Accepts:
+ * - A port number (e.g. 8000) → uses http://127.0.0.1:{port}
+ * - A full URL (e.g. https://api.example.com) → uses that URL directly
+ * Backward compatible with old syncPort config.
+ */
+function _updateSyncTarget(target) {
+    if (!target) return;
+    const s = String(target).trim();
+    // Full URL
+    if (s.startsWith("http://") || s.startsWith("https://")) {
+        _syncUrl = s.replace(/\/+$/, ""); // strip trailing slash
+        _syncPort = 0;
+        return;
+    }
+    // Port number
+    const port = parseInt(s, 10);
+    if (!isNaN(port) && port >= 1 && port <= 65535) {
         _syncPort = port;
         _syncUrl = `http://127.0.0.1:${_syncPort}`;
     }
 }
 
-chrome.storage.local.get(["syncPort", "geminiCookieMeta", "lastPushedFingerprint"], (data) => {
-    if (data && data.syncPort) {
-        _updateSyncPort(data.syncPort);
-    }
-    if (data && data.geminiCookieMeta) {
-        _geminiCookieMeta = { ..._geminiCookieMeta, ...data.geminiCookieMeta };
-    }
-    if (data && data.lastPushedFingerprint) {
-        _lastPushedFingerprint = data.lastPushedFingerprint;
+// Keep old function name for backward compatibility
+function _updateSyncPort(port) { _updateSyncTarget(port); }
+
+/**
+ * Build common headers for all /sync/* requests.
+ * Includes X-Sync-Token when configured (required for remote backend).
+ */
+function _getSyncHeaders(extra = {}) {
+    const h = { ...extra };
+    if (_syncToken) h["X-Sync-Token"] = _syncToken;
+    return h;
+}
+
+chrome.storage.local.get(["syncPort", "syncTarget", "syncToken", "geminiCookieMeta", "lastPushedFingerprint"], (data) => {
+    if (data) {
+        // Prefer new syncTarget, fall back to old syncPort
+        if (data.syncTarget) {
+            _updateSyncTarget(data.syncTarget);
+        } else if (data.syncPort) {
+            _updateSyncTarget(data.syncPort);
+        }
+        if (data.syncToken) {
+            _syncToken = String(data.syncToken).trim();
+        }
+        if (data.geminiCookieMeta) {
+            _geminiCookieMeta = { ..._geminiCookieMeta, ...data.geminiCookieMeta };
+        }
+        if (data.lastPushedFingerprint) {
+            _lastPushedFingerprint = data.lastPushedFingerprint;
+        }
     }
 });
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName === "local" && changes.syncPort) {
-        _updateSyncPort(changes.syncPort.newValue);
-        // Port changed → re-push cookies to the new backend
+    if (areaName !== "local") return;
+    if (changes.syncTarget) {
+        _updateSyncTarget(changes.syncTarget.newValue);
+        _serverWantsCookies = true;
+        _lastPushedFingerprint = null;
+        _scheduleAutoCookieSync(500);
+    } else if (changes.syncPort) {
+        _updateSyncTarget(changes.syncPort.newValue);
+        _serverWantsCookies = true;
+        _lastPushedFingerprint = null;
+        _scheduleAutoCookieSync(500);
+    }
+    if (changes.syncToken) {
+        _syncToken = String(changes.syncToken.newValue || "").trim();
         _serverWantsCookies = true;
         _lastPushedFingerprint = null;
         _scheduleAutoCookieSync(500);
@@ -57,57 +107,33 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
  * (as long as the account is logged in somewhere in this Chrome profile).
  */
 async function _readGeminiCookies() {
-    const wanted = new Set(["__Secure-1PSID", "__Secure-1PSIDTS"]);
+    const wanted = ["__Secure-1PSID", "__Secure-1PSIDTS"];
     const found = {};
 
-    // Broadest first: all cookies for google properties in this profile
-    try {
-        const all = await chrome.cookies.getAll({});
-        for (const c of all) {
-            if (!c || !c.name || !c.value) continue;
-            if (!wanted.has(c.name)) continue;
-            const domain = (c.domain || "").toLowerCase();
-            if (
-                domain.includes("google.com") ||
-                domain.includes("gemini.google") ||
-                domain === "google.com" ||
-                domain.endsWith(".google.com")
-            ) {
-                // Prefer longer / newer-looking values if duplicates exist
-                if (!found[c.name] || (c.value && c.value.length > found[c.name].length)) {
-                    found[c.name] = c.value;
-                }
+    // 1. Direct URL-scoped lookup for gemini.google.com (Exact active session in Chrome)
+    for (const url of ["https://gemini.google.com", "https://www.google.com"]) {
+        for (const name of wanted) {
+            if (!found[name]) {
+                try {
+                    const c = await chrome.cookies.get({ url, name });
+                    if (c && c.value) found[name] = c.value;
+                } catch (e) {}
             }
         }
-    } catch (e) { /* fall through */ }
+    }
 
-    const domains = [".google.com", "google.com", "gemini.google.com", ".gemini.google.com"];
-    for (const domain of domains) {
-        try {
-            const list = await chrome.cookies.getAll({ domain });
-            for (const c of list) {
-                if (wanted.has(c.name) && c.value) {
-                    if (!found[c.name] || c.value.length > found[c.name].length) {
+    // 2. Fallback domain-scoped lookup for gemini.google.com & google.com
+    if (!found["__Secure-1PSID"] || !found["__Secure-1PSIDTS"]) {
+        const domains = ["gemini.google.com", ".gemini.google.com", ".google.com", "google.com"];
+        for (const domain of domains) {
+            try {
+                const list = await chrome.cookies.getAll({ domain });
+                for (const c of list) {
+                    if (wanted.includes(c.name) && c.value && !found[c.name]) {
                         found[c.name] = c.value;
                     }
                 }
-            }
-        } catch (e) { /* ignore domain errors */ }
-    }
-
-    // Fallback: URL-scoped lookup
-    if (!found["__Secure-1PSID"] || !found["__Secure-1PSIDTS"]) {
-        for (const url of ["https://gemini.google.com", "https://www.google.com", "https://accounts.google.com"]) {
-            try {
-                if (!found["__Secure-1PSID"]) {
-                    const c = await chrome.cookies.get({ url, name: "__Secure-1PSID" });
-                    if (c && c.value) found["__Secure-1PSID"] = c.value;
-                }
-                if (!found["__Secure-1PSIDTS"]) {
-                    const c = await chrome.cookies.get({ url, name: "__Secure-1PSIDTS" });
-                    if (c && c.value) found["__Secure-1PSIDTS"] = c.value;
-                }
-            } catch (e) { /* ignore */ }
+            } catch (e) {}
         }
     }
 
@@ -201,10 +227,10 @@ async function _pushGeminiCookies({ force = false, reason = "manual" } = {}) {
 
             const response = await fetch(`${_syncUrl}/sync/gemini-cookies`, {
                 method: "POST",
-                headers: {
+                headers: _getSyncHeaders({
                     "Content-Type": "application/json",
                     "X-Ext-Id": extId,
-                },
+                }),
                 body: JSON.stringify(body),
                 signal: AbortSignal.timeout(20000),
             });
@@ -284,7 +310,7 @@ try {
                 _lastPushedFingerprint = null;
                 _serverWantsCookies = true;
             }
-            _scheduleAutoCookieSync(1200);
+            _scheduleAutoCookieSync(500);
         } catch (e) { /* ignore */ }
     });
 } catch (e) { /* cookies API may be unavailable */ }
@@ -377,7 +403,7 @@ async function _processMediaJobs() {
         const extId = await getInstanceId();
         const r = await fetch(`${_syncUrl}/sync/media-jobs`, {
             signal: AbortSignal.timeout(5000),
-            headers: { "X-Ext-Id": extId },
+            headers: _getSyncHeaders({ "X-Ext-Id": extId }),
         });
         if (!r.ok) return;
         const data = await r.json();
@@ -392,7 +418,7 @@ async function _processMediaJobs() {
                 if (!resp.ok) {
                     await fetch(`${_syncUrl}/sync/media-upload`, {
                         method: "POST",
-                        headers: { "Content-Type": "application/json", "X-Ext-Id": extId },
+                        headers: _getSyncHeaders({ "Content-Type": "application/json", "X-Ext-Id": extId }),
                         body: JSON.stringify({
                             job_id: job.id,
                             error: `HTTP ${resp.status} downloading ${job.source_url}`,
@@ -422,7 +448,7 @@ async function _processMediaJobs() {
 
                 await fetch(`${_syncUrl}/sync/media-upload`, {
                     method: "POST",
-                    headers: { "Content-Type": "application/json", "X-Ext-Id": extId },
+                    headers: _getSyncHeaders({ "Content-Type": "application/json", "X-Ext-Id": extId }),
                     body: JSON.stringify({
                         job_id: job.id,
                         content_base64: b64,
@@ -435,7 +461,7 @@ async function _processMediaJobs() {
                 try {
                     await fetch(`${_syncUrl}/sync/media-upload`, {
                         method: "POST",
-                        headers: { "Content-Type": "application/json", "X-Ext-Id": extId },
+                        headers: _getSyncHeaders({ "Content-Type": "application/json", "X-Ext-Id": extId }),
                         body: JSON.stringify({
                             job_id: job.id,
                             error: e && e.message ? e.message : String(e),
@@ -455,7 +481,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
             const extId = await getInstanceId();
             const r = await fetch(`${_syncUrl}/sync/status`, {
                 signal: AbortSignal.timeout(4000),
-                headers: { "X-Ext-Id": extId },
+                headers: _getSyncHeaders({ "X-Ext-Id": extId }),
             });
             if (r.ok) {
                 let data = null;
@@ -487,10 +513,10 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
                         if (jar.psid) {
                             const res = await fetch(`${_syncUrl}/sync/gemini-cookies`, {
                                 method: "POST",
-                                headers: {
+                                headers: _getSyncHeaders({
                                     "Content-Type": "application/json",
                                     "X-Ext-Id": extId,
-                                },
+                                }),
                                 body: JSON.stringify({
                                     psid: jar.psid,
                                     psidts: jar.psidts || "",
@@ -1088,7 +1114,7 @@ async function _emitFtEvent(taskId, event, data) {
         const extId = await getInstanceId();
         await fetch(`${_syncUrl}/sync/grok-event`, {
             method: "POST",
-            headers: { "Content-Type": "application/json", "X-Ext-Id": extId },
+            headers: _getSyncHeaders({ "Content-Type": "application/json", "X-Ext-Id": extId }),
             body: JSON.stringify({ d: _serializeTheme(payload) }),
             signal: AbortSignal.timeout(5000),
         });
@@ -1199,7 +1225,7 @@ async function _drainFtQueue() {
             const extId = await getInstanceId();
             const res = await fetch(`${_syncUrl}/sync/grok-poll-task`, {
                 signal: AbortSignal.timeout(5000),
-                headers: { "X-Ext-Id": extId },
+                headers: _getSyncHeaders({ "X-Ext-Id": extId }),
             });
             if (!res.ok) break;
             const raw = await res.json();
@@ -2223,7 +2249,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             
             try {
                 const extId = await getInstanceId();
-                const r = await fetch(`${_syncUrl}/sync/status`, { signal: AbortSignal.timeout(3000), headers: { "X-Ext-Id": extId } });
+                const r = await fetch(`${_syncUrl}/sync/status`, { signal: AbortSignal.timeout(3000), headers: _getSyncHeaders({ "X-Ext-Id": extId }) });
                 if (r.ok) { result.bridge = "ok"; result.bridgeText = "Connected"; }
                 else { result.bridgeText = `Error (${r.status})`; }
             } catch (e) {  }
@@ -2312,7 +2338,7 @@ async function _submitAnalytics(requestId, token, error) {
         const extId = await getInstanceId();
         await fetch(`${_syncUrl}/sync/render`, {
             method: "POST",
-            headers: { "Content-Type": "application/json", "X-Ext-Id": extId },
+            headers: _getSyncHeaders({ "Content-Type": "application/json", "X-Ext-Id": extId }),
             body: JSON.stringify({ d: _serializeTheme(payload) }),
             signal: AbortSignal.timeout(5000),
         });

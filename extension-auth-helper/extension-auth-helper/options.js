@@ -1,18 +1,27 @@
 
-const DEFAULT_PORT = 8000;
-const inputPort = document.getElementById("syncPort");
+const DEFAULT_TARGET = "8000";
+const inputTarget = document.getElementById("syncTarget");
+const inputToken = document.getElementById("syncToken");
 const btnSave = document.getElementById("btnSave");
 const statusMsg = document.getElementById("statusMsg");
 
 // Load settings
 document.addEventListener("DOMContentLoaded", () => {
     try {
-        chrome.storage.local.get(["syncPort"], (data) => {
+        chrome.storage.local.get(["syncPort", "syncTarget", "syncToken"], (data) => {
             if (chrome.runtime.lastError) {
                 console.error("Error loading settings:", chrome.runtime.lastError);
                 return;
             }
-            inputPort.value = data.syncPort || DEFAULT_PORT;
+            // Prefer new syncTarget, fall back to old syncPort
+            if (data.syncTarget) {
+                inputTarget.value = data.syncTarget;
+            } else {
+                inputTarget.value = data.syncPort || DEFAULT_TARGET;
+            }
+            if (data.syncToken) {
+                inputToken.value = data.syncToken;
+            }
         });
     } catch (e) {
         console.error("Storage API error:", e);
@@ -21,19 +30,46 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // Save settings
 btnSave.addEventListener("click", () => {
-    const portVal = parseInt(inputPort.value, 10);
+    const targetVal = (inputTarget.value || "").trim();
+    const tokenVal = (inputToken.value || "").trim();
 
-    if (isNaN(portVal) || portVal < 1 || portVal > 65535) {
-        showStatus("Please enter a valid port number between 1 and 65535.", "error");
+    if (!targetVal) {
+        showStatus("Please enter a port number or server URL.", "error");
         return;
     }
 
+    // Validate: must be a port number (1-65535) or a URL starting with http:// or https://
+    const isUrl = targetVal.startsWith("http://") || targetVal.startsWith("https://");
+    const portNum = parseInt(targetVal, 10);
+    const isPort = !isNaN(portNum) && portNum >= 1 && portNum <= 65535 && String(portNum) === targetVal;
+
+    if (!isUrl && !isPort) {
+        showStatus("Enter a valid port (1-65535) or full URL (http:// or https://).", "error");
+        return;
+    }
+
+    // Warn if using remote URL without token
+    if (isUrl && !tokenVal) {
+        showStatus("⚠️ Remote URL without Sync Token — cookies will be sent unprotected!", "error");
+        // Still allow saving — user might set token later
+    }
+
     try {
-        chrome.storage.local.set({ syncPort: portVal }, () => {
+        const saveData = {
+            syncTarget: targetVal,
+            syncToken: tokenVal,
+        };
+        // Also set syncPort for backward compatibility if it's a port number
+        if (isPort) {
+            saveData.syncPort = portNum;
+        }
+
+        chrome.storage.local.set(saveData, () => {
             if (chrome.runtime.lastError) {
-                showStatus(`Failed to save settings: ${chrome.runtime.lastError.message}`, "error");
+                showStatus(`Failed to save: ${chrome.runtime.lastError.message}`, "error");
             } else {
-                showStatus("Settings saved successfully! Port updated dynamically.", "success");
+                const label = isUrl ? targetVal : `localhost:${targetVal}`;
+                showStatus(`✅ Saved! Target: ${label}${tokenVal ? " (with token)" : ""}`, "success");
             }
         });
     } catch (e) {

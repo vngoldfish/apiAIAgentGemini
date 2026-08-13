@@ -25,7 +25,7 @@ from gemini_webapi import GeminiClient, logger
 from gemini_webapi.exceptions import AuthError, TemporarilyBlocked, UsageLimitExceeded
 from gemini_webapi.types.image import WebImage, GeneratedImage
 from gemini_webapi.types.gem import Gem
-from gemini_webapi.constants import Model
+from gemini_webapi.constants import Model, AccountStatus
 
 try:
     from media_services import (
@@ -171,7 +171,8 @@ SESSION_MAX_COUNT = int(os.getenv("SESSION_MAX_COUNT", "500"))
 SESSION_TTL_SECONDS = int(os.getenv("SESSION_TTL_SECONDS", "3600"))  # 1h idle
 ACCOUNT_COOLDOWN_SECONDS = int(os.getenv("ACCOUNT_COOLDOWN_SECONDS", "120"))
 MAX_FAILOVER_ATTEMPTS = int(os.getenv("MAX_FAILOVER_ATTEMPTS", "3"))
-WATCHDOG_INTERVAL_SECONDS = int(os.getenv("WATCHDOG_INTERVAL_SECONDS", "45"))
+WATCHDOG_INTERVAL_SECONDS = int(os.getenv("WATCHDOG_INTERVAL_SECONDS", "30"))
+AUTH_CHECK_EVERY_N_WATCHDOG = int(os.getenv("AUTH_CHECK_EVERY_N_WATCHDOG", "3"))  # auth health check every N watchdog cycles (~90s)
 PROACTIVE_COOKIE_ON_EVERY_REQUEST = os.getenv("PROACTIVE_COOKIE_ON_EVERY_REQUEST", "1") != "0"
 
 # JSON Storage Files
@@ -198,6 +199,14 @@ def save_config(config: dict):
             json.dump(config, f, indent=4)
     except Exception as e:
         logger.error(f"Error saving dashboard_config.json: {e}")
+
+# Sync token for securing /sync/* endpoints (required when extension connects over internet)
+# If empty, sync endpoints are open (backward-compatible for localhost usage)
+# Set via SYNC_TOKEN env var or "sync_token" in dashboard_config.json
+SYNC_TOKEN = os.getenv("SYNC_TOKEN", "").strip()
+if not SYNC_TOKEN:
+    _cfg = load_config()
+    SYNC_TOKEN = _cfg.get("sync_token", "").strip()
 
 # In-memory logs ring buffer for dashboard
 api_logs = []
@@ -486,6 +495,19 @@ def _extract_psid_pair(payload: ExtensionGeminiCookiesPayload) -> tuple[str, str
     return psid, psidts
 
 
+def verify_sync_token(request: Request) -> None:
+    """Verify X-Sync-Token header for /sync/* endpoints.
+    If SYNC_TOKEN is empty, skip verification (backward-compatible for localhost)."""
+    if not SYNC_TOKEN:
+        return
+    token = request.headers.get("X-Sync-Token", "").strip()
+    if not token or token != SYNC_TOKEN:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing sync token. Set X-Sync-Token header."
+        )
+
+
 def is_cookie_auth_failure(exc: BaseException) -> bool:
     """True when the error indicates invalid/expired Gemini web cookies/session."""
     if isinstance(exc, AuthError):
@@ -582,6 +604,52 @@ async def apply_newer_extension_cookies_if_changed() -> dict:
     except Exception as e:
         logger.warning(f"[cookie-proactive] Failed to apply newer cookies: {e}")
         return {"updated": False, "reason": "apply_failed", "error": str(e)}
+
+
+async def check_provider_auth_health() -> None:
+    """
+    Proactively verify each active provider's authentication status by calling
+    _fetch_user_status().  If a provider returns UNAUTHENTICATED, immediately
+    trigger recovery (mark failed + request fresh cookies from extension)
+    BEFORE any user request hits the dead provider.
+    """
+    for acc_id, info in list(client_pool.items()):
+        if info.get("status") != "Active" or not info.get("client"):
+            continue
+        cl = info["client"]
+        try:
+            await cl._fetch_user_status()
+            if cl.account_status == AccountStatus.UNAUTHENTICATED:
+                logger.warning(
+                    f"[auth-health] Provider {acc_id} ({info.get('name')}) "
+                    f"is UNAUTHENTICATED — triggering auto-recovery"
+                )
+                await mark_account_auth_failed(
+                    acc_id, AuthError("Proactive health check: cookie expired (UNAUTHENTICATED)")
+                )
+                # Try to apply cached cookies immediately if extension already pushed newer ones
+                try:
+                    result = await apply_newer_extension_cookies_if_changed()
+                    if result.get("updated"):
+                        logger.info(f"[auth-health] Applied cached cookies for immediate recovery")
+                except Exception:
+                    pass
+            else:
+                logger.debug(
+                    f"[auth-health] Provider {acc_id} ({info.get('name')}) "
+                    f"is healthy: {cl.account_status.name}"
+                )
+        except Exception as e:
+            if is_cookie_auth_failure(e):
+                logger.warning(
+                    f"[auth-health] Provider {acc_id} ({info.get('name')}) "
+                    f"auth check failed: {e} — triggering recovery"
+                )
+                await mark_account_auth_failed(acc_id, e)
+            else:
+                logger.debug(
+                    f"[auth-health] Provider {acc_id} health check error (non-auth): {e}"
+                )
 
 
 async def mark_account_auth_failed(acc_id: str, error: BaseException) -> None:
@@ -1146,8 +1214,15 @@ async def get_client_gems(cl: GeminiClient) -> List[Any]:
         return cl.gems
     except RuntimeError:
         logger.info("Gems cache is empty. Fetching gems from client...")
-        await cl.fetch_gems(include_hidden=False)
-        return cl.gems
+        try:
+            await cl.fetch_gems(include_hidden=False)
+            return cl.gems
+        except Exception as e:
+            logger.warning(f"Failed to fetch gems: {e}")
+            return []
+    except Exception as e:
+        logger.warning(f"Failed to access gems: {e}")
+        return []
 
 # Client-specific Gem resolving helper
 async def resolve_gem_for_client(cl: GeminiClient, model_name: str) -> Optional[Gem]:
@@ -1171,12 +1246,15 @@ async def cookie_health_watchdog():
     24/7 background job:
     - Evict stale chat sessions (memory)
     - Apply newer extension cookies if fingerprint differs
+    - Proactively verify provider auth status (detect expired cookies early)
     - Request extension re-sync when providers are down
     - Clear expired cooldowns
     """
+    _watchdog_cycle = 0
     while True:
         try:
             await asyncio.sleep(max(20, WATCHDOG_INTERVAL_SECONDS))
+            _watchdog_cycle += 1
             ops_stats["last_watchdog_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
 
             # Memory hygiene
@@ -1191,6 +1269,14 @@ async def cookie_health_watchdog():
                     ) + 1
             except Exception as e:
                 logger.warning(f"Watchdog proactive cookie apply: {e}")
+
+            # Proactive auth health check: verify cookies are still valid
+            # Runs every AUTH_CHECK_EVERY_N_WATCHDOG cycles (~90s by default)
+            if AUTH_CHECK_EVERY_N_WATCHDOG > 0 and _watchdog_cycle % AUTH_CHECK_EVERY_N_WATCHDOG == 0:
+                try:
+                    await check_provider_auth_health()
+                except Exception as e:
+                    logger.warning(f"Watchdog auth health check error: {e}")
 
             # Drop expired cooldowns
             now = time.time()
@@ -1276,6 +1362,10 @@ async def startup_event():
 
     # Start background cookie recovery watcher
     asyncio.create_task(cookie_health_watchdog())
+    if SYNC_TOKEN:
+        logger.info(f"SYNC_TOKEN is set: {SYNC_TOKEN[:8]}... (use this in extension settings)")
+    else:
+        logger.info("SYNC_TOKEN is not set — sync endpoints are open (localhost mode)")
     logger.info("Cookie health watchdog started (checks every 60s).")
 
 @app.on_event("shutdown")
@@ -1308,21 +1398,13 @@ async def shutdown_event():
 @app.get("/agents")
 @app.get("/traffic")
 @app.get("/guide")
+@app.get("/playground")
+@app.get("/chat-test")
 async def get_dashboard():
     index_path = ROOT / "index.html"
     if not index_path.exists():
         raise HTTPException(status_code=404, detail="index.html not found.")
     return FileResponse(str(index_path))
-
-
-@app.get("/chat-test")
-@app.get("/playground")
-async def get_playground():
-    """Interactive chat + image + video test page for the API."""
-    path = ROOT / "playground.html"
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="playground.html not found.")
-    return FileResponse(str(path))
 
 # Dashboard API endpoints
 @app.get("/api/status")
@@ -1375,11 +1457,13 @@ async def get_api_status():
 
 # ---------------------------------------------------------------------------
 # Chrome Extension Auth Helper bridge
-# Extension posts to these /sync/* routes (no dashboard token required).
-# Point the extension "Local Backend Port" to 8000 (this server).
+# Extension posts to these /sync/* routes.
+# Supports both localhost (port) and remote backend (URL + Sync Token).
+# When SYNC_TOKEN is set, all /sync/* requests require X-Sync-Token header.
 # ---------------------------------------------------------------------------
 
 def _mark_extension_heartbeat(request: Request):
+    verify_sync_token(request)
     extension_state["connected"] = True
     extension_state["last_heartbeat"] = time.strftime("%Y-%m-%d %H:%M:%S")
     ext_id = request.headers.get("X-Ext-Id")
@@ -2097,6 +2181,7 @@ async def health_check():
             "sessions_evicted": ops_stats.get("sessions_evicted"),
             "last_watchdog_at": ops_stats.get("last_watchdog_at"),
         },
+        "sync_token_set": bool(SYNC_TOKEN),
         "uptime_mode": "24/7",
     }
     # Always 200 for liveness so container restarts don't flap during cookie recovery
