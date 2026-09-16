@@ -11,65 +11,20 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup SSH and Deploy
-        env:
-          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_USER: ${{ secrets.VPS_USER }}
+      - name: Setup SSH key
         run: |
-          # Setup SSH key
           mkdir -p ~/.ssh
-          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-
-          # SSH config for RSA key compatibility
-          cat > ~/.ssh/config << EOF
-          Host vps
-            HostName $VPS_HOST
-            User $VPS_USER
-            IdentityFile ~/.ssh/deploy_key
-            StrictHostKeyChecking no
-            UserKnownHostsFile /dev/null
-            PubkeyAcceptedAlgorithms +ssh-rsa
-            HostkeyAlgorithms +ssh-rsa
-          EOF
+          echo "Host *" > ~/.ssh/config
+          echo "  StrictHostKeyChecking no" >> ~/.ssh/config
+          echo "  UserKnownHostsFile /dev/null" >> ~/.ssh/config
           chmod 600 ~/.ssh/config
 
-          # Test SSH connection
-          ssh vps "echo '✅ SSH connection OK'"
+      - name: Test SSH connection
+        run: |
+          ssh -i ~/.ssh/deploy_key -v ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "echo 'SSH OK'"
 
-          # Deploy
-          ssh vps << 'ENDSSH'
-          TARGET_DIR="/opt/apps/apiAIAgentGemini"
-          if [ -d "$TARGET_DIR" ]; then
-            cd "$TARGET_DIR"
-          elif [ -d "$HOME/apiAIAgentGemini" ]; then
-            cd "$HOME/apiAIAgentGemini"
-          fi
-
-          echo "==> Deploying to $(pwd)..."
-
-          # Pull latest code
-          sudo git fetch origin main
-          sudo git reset --hard origin/main
-
-          # Rebuild and restart with Docker
-          if [ -f "docker-compose.yml" ] && command -v docker &> /dev/null; then
-            echo "==> Deploying with Docker Compose..."
-            sudo docker compose build --no-cache
-            sudo docker compose down
-            sudo docker compose up -d
-
-            # Wait and check health
-            sleep 10
-            if sudo docker ps --filter name=gemini-api --format '{{.Status}}' | grep -q healthy; then
-              echo "✅ Deploy successful! Container is healthy."
-            else
-              echo "⚠️ Container started. Checking logs..."
-              sudo docker logs gemini-api --tail 25
-            fi
-          elif [ -f "deploy.sh" ]; then
-            chmod +x deploy.sh
-            ./deploy.sh
-          fi
-          ENDSSH
+      - name: Deploy
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "cd /opt/apps/apiAIAgentGemini && sudo git fetch origin main && sudo git reset --hard origin/main && sudo docker compose build --no-cache && sudo docker compose down && sudo docker compose up -d && sleep 10 && sudo docker ps --filter name=gemini-api && sudo docker logs gemini-api --tail 10"
