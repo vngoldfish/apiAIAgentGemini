@@ -11,29 +11,33 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+
       - name: Deploy to VPS
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          script: |
-            cd /opt/apps/apiAIAgentGemini
-            
-            # Pull latest code
-            sudo git fetch origin main
-            sudo git reset --hard origin/main
-            
-            # Rebuild and restart
-            sudo docker compose build --no-cache
-            sudo docker compose down
-            sudo docker compose up -d
-            
-            # Wait and check health
-            sleep 10
-            if sudo docker ps --filter name=gemini-api --format '{{.Status}}' | grep -q healthy; then
-              echo "✅ Deploy successful! Container is healthy."
-            else
-              echo "⚠️ Container started but not yet healthy. Checking logs..."
-              sudo docker logs gemini-api --tail 20
-            fi
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'ENDSSH'
+          cd /opt/apps/apiAIAgentGemini
+
+          # Pull latest code
+          sudo git fetch origin main
+          sudo git reset --hard origin/main
+
+          # Rebuild and restart
+          sudo docker compose build --no-cache
+          sudo docker compose down
+          sudo docker compose up -d
+
+          # Wait and check health
+          sleep 10
+          if sudo docker ps --filter name=gemini-api --format '{{.Status}}' | grep -q healthy; then
+            echo "✅ Deploy successful! Container is healthy."
+          else
+            echo "⚠️ Container started but may need more time. Checking logs..."
+            sudo docker logs gemini-api --tail 20
+          fi
+          ENDSSH
