@@ -118,6 +118,7 @@ class GeminiClient(ChatMixin, GemMixin, ResearchMixin):
         "_lock",
         "_recent_chats",  # From ChatMixin
         "_gems",  # From GemMixin
+        "on_cookie_rotate",
         "kwargs",
     ]
 
@@ -126,10 +127,12 @@ class GeminiClient(ChatMixin, GemMixin, ResearchMixin):
         secure_1psid: str | None = None,
         secure_1psidts: str | None = None,
         proxy: str | None = None,
+        on_cookie_rotate = None,
         **kwargs,
     ):
         super().__init__()
         self.proxy = proxy
+        self.on_cookie_rotate = on_cookie_rotate
         self.client: AsyncSession | None = None
         self.access_token: str | None = None
         self.build_label: str | None = None
@@ -341,6 +344,14 @@ class GeminiClient(ChatMixin, GemMixin, ResearchMixin):
                             "The current cookies may have been invalidated by the server. "
                             "Retrying in next interval."
                         )
+                    else:
+                        if hasattr(self, "on_cookie_rotate") and callable(self.on_cookie_rotate):
+                            try:
+                                res = self.on_cookie_rotate(self, new_1psidts)
+                                if asyncio.iscoroutine(res):
+                                    await res
+                            except Exception as e:
+                                logger.debug(f"on_cookie_rotate callback error: {e}")
             except asyncio.CancelledError:
                 raise
             except AuthError:

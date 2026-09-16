@@ -23,6 +23,7 @@ let _lastPushedFingerprint = null;
 let _pushInFlight = null;
 let _cookieChangeTimer = null;
 let _serverWantsCookies = true; // true until server confirms it has an active extension provider
+let _cachedUserProfile = null; // Google user profile (name, email)
 
 /**
  * Update sync target. Accepts:
@@ -60,7 +61,7 @@ function _getSyncHeaders(extra = {}) {
     return h;
 }
 
-chrome.storage.local.get(["syncPort", "syncTarget", "syncToken", "geminiCookieMeta", "lastPushedFingerprint"], (data) => {
+chrome.storage.local.get(["syncPort", "syncTarget", "syncToken", "geminiCookieMeta", "lastPushedFingerprint", "userProfile"], (data) => {
     if (data) {
         // Prefer new syncTarget, fall back to old syncPort
         if (data.syncTarget) {
@@ -76,6 +77,9 @@ chrome.storage.local.get(["syncPort", "syncTarget", "syncToken", "geminiCookieMe
         }
         if (data.lastPushedFingerprint) {
             _lastPushedFingerprint = data.lastPushedFingerprint;
+        }
+        if (data.userProfile) {
+            _cachedUserProfile = data.userProfile;
         }
     }
 });
@@ -101,12 +105,40 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
     }
 });
 
+let _lastSilentWakeup = 0;
+/**
+ * Silently ping gemini.google.com in the background with Chrome credentials.
+ * This triggers Google to refresh session cookies (__Secure-1PSID / __Secure-1PSIDTS)
+ * and extracts the Google user email without opening any visible browser tab.
+ */
+async function _silentWakeupGeminiSession(force = false) {
+    if (!force && Date.now() - _lastSilentWakeup < 60000) return;
+    _lastSilentWakeup = Date.now();
+    try {
+        const resp = await fetch("https://gemini.google.com/app", {
+            credentials: "include",
+            signal: AbortSignal.timeout(12000),
+        });
+        if (resp.ok) {
+            const html = await resp.text();
+            const emailMatch = html.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+            if (emailMatch && (!_cachedUserProfile || !_cachedUserProfile.email)) {
+                _cachedUserProfile = {
+                    email: emailMatch[1].toLowerCase(),
+                    name: emailMatch[1].split("@")[0],
+                };
+                try { chrome.storage.local.set({ userProfile: _cachedUserProfile }); } catch (e) {}
+            }
+        }
+    } catch (e) { /* ignore */ }
+}
+
 /**
  * Read Gemini Web cookies (__Secure-1PSID / __Secure-1PSIDTS) from the browser jar.
  * Works for the currently signed-in Google/Gemini session without opening a tab
  * (as long as the account is logged in somewhere in this Chrome profile).
  */
-async function _readGeminiCookies() {
+async function _readGeminiCookies(allowWakeup = true) {
     const wanted = ["__Secure-1PSID", "__Secure-1PSIDTS"];
     const found = {};
 
@@ -137,6 +169,12 @@ async function _readGeminiCookies() {
         }
     }
 
+    // 3. If cookies are still missing, wake up the session in the background and retry once
+    if (allowWakeup && (!found["__Secure-1PSID"] || !found["__Secure-1PSIDTS"])) {
+        await _silentWakeupGeminiSession(true);
+        return _readGeminiCookies(false);
+    }
+
     return {
         psid: found["__Secure-1PSID"] || "",
         psidts: found["__Secure-1PSIDTS"] || "",
@@ -149,8 +187,8 @@ function _maskCookie(value) {
     return `${value.slice(0, 8)}...${value.slice(-6)}`;
 }
 
-function _cookieFingerprint(psid, psidts) {
-    return `${psid || ""}||${psidts || ""}`;
+function _cookieFingerprint(psid, psidts, email = "") {
+    return `${psid || ""}||${psidts || ""}||${email || ""}`;
 }
 
 function _scheduleAutoCookieSync(delayMs = 800) {
@@ -163,7 +201,7 @@ function _scheduleAutoCookieSync(delayMs = 800) {
 
 /**
  * Push Gemini cookies from the current browser session to the local Gemini-API server.
- * Auto-applies as provider "Extension Auto".
+ * Auto-applies as provider with real name and email if detected.
  *
  * @param {object} opts
  * @param {boolean} opts.force - upload even if fingerprint unchanged
@@ -197,7 +235,25 @@ async function _pushGeminiCookies({ force = false, reason = "manual" } = {}) {
                 return { ok: false, error: _geminiCookieMeta.lastError, reason };
             }
 
-            const fp = _cookieFingerprint(jar.psid, jar.psidts);
+            let profile = _cachedUserProfile;
+            if (!profile) {
+                try {
+                    const st = await chrome.storage.local.get(["userProfile"]);
+                    if (st && st.userProfile) profile = st.userProfile;
+                } catch (e) {}
+            }
+            const userEmail = (profile && profile.email) || null;
+            const userName = (profile && profile.name) || null;
+            let displayName = "Extension Auto";
+            if (userName && userEmail) {
+                displayName = `${userName} (${userEmail})`;
+            } else if (userEmail) {
+                displayName = userEmail;
+            } else if (userName) {
+                displayName = userName;
+            }
+
+            const fp = _cookieFingerprint(jar.psid, jar.psidts, userEmail);
             // Skip upload if cookies unchanged and server already has them (unless forced / server requests)
             if (
                 !force &&
@@ -219,7 +275,8 @@ async function _pushGeminiCookies({ force = false, reason = "manual" } = {}) {
                 psidts: jar.psidts || "",
                 secure_1psid: jar.psid,
                 secure_1psidts: jar.psidts || "",
-                name: "Extension Auto",
+                name: displayName,
+                email: userEmail,
                 auto_apply: true,
                 cookies: jar.cookies,
                 reason,
@@ -507,43 +564,16 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
                 }
 
                 if (data && (data.force_cookie_sync || data.need_cookie_sync)) {
-                    const preferred = (data.preferred_name || "Extension Auto").trim();
-                    try {
-                        const jar = await _readGeminiCookies();
-                        if (jar.psid) {
-                            const res = await fetch(`${_syncUrl}/sync/gemini-cookies`, {
-                                method: "POST",
-                                headers: _getSyncHeaders({
-                                    "Content-Type": "application/json",
-                                    "X-Ext-Id": extId,
-                                }),
-                                body: JSON.stringify({
-                                    psid: jar.psid,
-                                    psidts: jar.psidts || "",
-                                    name: preferred,
-                                    auto_apply: true,
-                                    cookies: jar.cookies,
-                                    reason: "server-force",
-                                }),
-                                signal: AbortSignal.timeout(25000),
-                            });
-                            if (res.ok) {
-                                _lastPushedFingerprint = _cookieFingerprint(jar.psid, jar.psidts);
-                                _serverWantsCookies = false;
-                                _consecutivePushFails = 0;
-                            } else {
-                                _consecutivePushFails += 1;
-                                _serverWantsCookies = true;
-                            }
-                        } else {
-                            _serverWantsCookies = true;
-                        }
-                    } catch (e) {
+                    await _silentWakeupGeminiSession(true);
+                    const pushRes = await _pushGeminiCookies({ force: true, reason: "server-force" });
+                    if (pushRes && pushRes.ok) {
+                        _serverWantsCookies = false;
+                        _consecutivePushFails = 0;
+                    } else {
                         _consecutivePushFails += 1;
-                        _pushGeminiCookies({ force: true, reason: "server-force-retry" }).catch(() => { });
+                        _serverWantsCookies = true;
                     }
-                } else {
-                    // Soft auto-sync (skips when fingerprint unchanged)
+                } else if (_serverWantsCookies) {
                     const r2 = await _pushGeminiCookies({ reason: "heartbeat" });
                     if (r2 && r2.ok) _consecutivePushFails = 0;
                     else {
@@ -568,6 +598,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     }
     if (alarm.name === "geminiCookieForce") {
         // Periodic full re-push so server can re-validate even if fingerprint looks same
+        await _silentWakeupGeminiSession(true);
         _serverWantsCookies = true;
         _pushGeminiCookies({ force: true, reason: "periodic-10m" }).catch(() => { });
     }
@@ -2080,6 +2111,19 @@ async function _validateCanvas(tabId) {
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
+    if (message.type === "GEMINI_PROFILE_INFO") {
+        if (message.profile && message.profile.email) {
+            _cachedUserProfile = message.profile;
+            try { chrome.storage.local.set({ userProfile: message.profile }); } catch (e) {}
+            if (message.forceSync || _serverWantsCookies) {
+                _pushGeminiCookies({ force: true, reason: "profile-detected" }).catch(() => {});
+            } else {
+                _scheduleAutoCookieSync(300);
+            }
+        }
+        sendResponse({ ok: true, profile: _cachedUserProfile });
+        return false;
+    }
     
     if (message.type === "CHECK_V") {
         _validateCanvas(message.tabId)
@@ -2137,8 +2181,16 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
                     return;
                 }
 
-                // Push with custom display name when provided
-                const displayName = (message.name && String(message.name).trim()) || "Extension Auto";
+                // Push with custom display name when provided, otherwise detected profile
+                const profile = _cachedUserProfile;
+                const userEmail = (profile && profile.email) || null;
+                const userName = (profile && profile.name) || null;
+                let defaultName = "Extension Auto";
+                if (userName && userEmail) defaultName = `${userName} (${userEmail})`;
+                else if (userEmail) defaultName = userEmail;
+                else if (userName) defaultName = userName;
+
+                const displayName = (message.name && String(message.name).trim()) || defaultName;
                 const extId = await getInstanceId();
                 _serverWantsCookies = true;
 
@@ -2148,6 +2200,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
                     secure_1psid: jar.psid,
                     secure_1psidts: jar.psidts || "",
                     name: displayName,
+                    email: userEmail,
                     auto_apply: true,
                     cookies: jar.cookies,
                     reason: "dashboard-import",
@@ -2378,3 +2431,16 @@ async function _setLayoutMode(active) {
         }
     } catch (e) {  }
 }
+
+// On Chrome startup: silently wake up Gemini session and push fresh cookies immediately
+chrome.runtime.onStartup.addListener(async () => {
+    try {
+        await _silentWakeupGeminiSession(true);
+        _scheduleAutoCookieSync(1000);
+    } catch (e) { /* ignore */ }
+});
+
+// Initial boot silent wakeup
+setTimeout(() => {
+    _silentWakeupGeminiSession(false).catch(() => {});
+}, 3000);

@@ -235,6 +235,63 @@
         if (!isDragging) openPanel();
     });
 
+    // Extract Google Profile (Real Name & Email) from Gemini UI
+    function extractGoogleProfile() {
+        const selectors = [
+            'a[aria-label*="@"]',
+            'button[aria-label*="@"]',
+            'img[alt*="@"]',
+            'div[aria-label*="@"]',
+            'span[aria-label*="@"]',
+            '[data-hovercard-id*="@"]',
+            'a[href*="accounts.google.com/SignOutOptions"]',
+            'a[href*="accounts.google.com"]'
+        ];
+        const elements = document.querySelectorAll(selectors.join(", "));
+        for (const el of elements) {
+            const raw = (
+                el.getAttribute("aria-label") ||
+                el.getAttribute("alt") ||
+                el.getAttribute("title") ||
+                el.textContent ||
+                ""
+            ).trim();
+
+            const emailMatch = raw.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+            if (emailMatch) {
+                const email = emailMatch[1].trim().toLowerCase();
+                let name = raw
+                    .replace(/^.*?(Google Account|Tài khoản Google|Cuenta de Google|Compte Google)\s*:\s*/i, "")
+                    .replace(emailMatch[0], "")
+                    .replace(/[()\n\r\t]/g, "")
+                    .trim();
+                name = name.replace(/^[-–—:]+|[-–—:]+$/g, "").trim();
+                if (!name || name.length < 2) {
+                    name = email.split("@")[0];
+                }
+                return { name, email };
+            }
+        }
+        return null;
+    }
+
+    let lastSentProfileKey = "";
+    function checkAndSendProfile(forceSync = false) {
+        if (!isAlive()) return;
+        const profile = extractGoogleProfile();
+        if (profile && profile.email) {
+            const key = `${profile.name}||${profile.email}`;
+            if (key !== lastSentProfileKey || forceSync) {
+                lastSentProfileKey = key;
+                chrome.runtime.sendMessage({
+                    type: "GEMINI_PROFILE_INFO",
+                    profile: profile,
+                    forceSync: forceSync
+                }, () => {});
+            }
+        }
+    }
+
     // Double-click: quick cookie sync without opening panel
     fab.addEventListener("dblclick", (e) => {
         e.preventDefault();
@@ -243,6 +300,7 @@
             showToast("Extension reloaded — refresh this page");
             return;
         }
+        checkAndSendProfile(true);
         showToast("Syncing Gemini cookies…");
         chrome.runtime.sendMessage({ type: "SYNC_GEMINI_COOKIES" }, (result) => {
             if (chrome.runtime.lastError) {
@@ -297,15 +355,27 @@
     refreshBadge();
     setInterval(refreshBadge, 5000);
 
-    // Auto-sync cookies of the current Gemini session after page load
+    // Auto-sync cookies and detect profile of current Gemini session
     function autoSync(reason) {
         if (!isAlive()) return;
+        checkAndSendProfile(false);
         chrome.runtime.sendMessage({ type: "SYNC_GEMINI_COOKIES" }, () => {
             refreshBadge();
         });
     }
+
+    // Watch DOM for profile avatar appearance (Gemini SPA)
+    try {
+        const obs = new MutationObserver(() => {
+            checkAndSendProfile(false);
+        });
+        obs.observe(document.body || document.documentElement, { childList: true, subtree: true });
+        setTimeout(() => obs.disconnect(), 45000);
+    } catch (e) {}
+
     setTimeout(() => autoSync("page-load"), 1500);
-    setTimeout(() => autoSync("page-load-retry"), 8000);
+    setTimeout(() => autoSync("page-load-retry"), 6000);
+    setTimeout(() => checkAndSendProfile(true), 10000);
     // Periodic soft refresh while tab is open
     setInterval(() => autoSync("page-interval"), 60000);
 })();

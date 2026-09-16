@@ -566,9 +566,13 @@ async def apply_newer_extension_cookies_if_changed() -> dict:
     cached_psidts = _extension_cookie_cache.get("psidts") or ""
     cache_fp = _cookie_pair_fingerprint(cached_psid, cached_psidts)
     name = _extension_cookie_cache.get("name") or extension_state.get("provider_name") or "Extension Auto"
+    email = _extension_cookie_cache.get("email")
 
     accounts = load_accounts()
-    ext = next((a for a in accounts if a.get("source") == EXTENSION_PROVIDER_MARKER), None)
+    if email:
+        ext = next((a for a in accounts if (a.get("email") or "").lower() == email.lower()), None)
+    else:
+        ext = next((a for a in accounts if a.get("source") == EXTENSION_PROVIDER_MARKER), None)
 
     if ext:
         live_fp = _cookie_pair_fingerprint(ext.get("psid") or "", ext.get("psidts") or "")
@@ -586,6 +590,7 @@ async def apply_newer_extension_cookies_if_changed() -> dict:
             cached_psid,
             cached_psidts,
             name,
+            email=email,
             force_reinit=True,
         )
         _extension_cookie_cache["applied_fingerprint"] = cache_fp
@@ -702,16 +707,34 @@ async def mark_account_auth_failed(acc_id: str, error: BaseException) -> None:
         )
 
 
-async def upsert_extension_provider(psid: str, psidts: str, name: str, force_reinit: bool = False) -> dict:
+async def upsert_extension_provider(
+    psid: str,
+    psidts: str,
+    name: str,
+    email: Optional[str] = None,
+    force_reinit: bool = False,
+) -> dict:
     """
-    Create or refresh the dedicated 'extension_auto' web provider in the pool.
+    Create or refresh the dedicated extension web provider in the pool.
+    Matches accounts by email if provided, or legacy extension_auto if no email is known.
     Reuses the same account id so sticky sessions stay valid when cookies rotate.
     Skips full re-init when cookies are unchanged and the client is already Active
     (unless force_reinit / recovery after auth failure).
     """
     accounts = load_accounts()
-    existing = next((a for a in accounts if a.get("source") == EXTENSION_PROVIDER_MARKER), None)
-    display_name = name or "Extension Auto"
+    clean_email = email.strip().lower() if email and email.strip() else None
+    display_name = name or (clean_email if clean_email else "Extension Auto")
+
+    # Match existing account:
+    # 1. Match by email
+    existing = None
+    if clean_email:
+        existing = next((a for a in accounts if (a.get("email") or "").lower() == clean_email), None)
+        # Fallback: if not found by email, check if there's an existing extension_auto account that has no email assigned yet
+        if not existing:
+            existing = next((a for a in accounts if a.get("source") == EXTENSION_PROVIDER_MARKER and not a.get("email")), None)
+    else:
+        existing = next((a for a in accounts if a.get("source") == EXTENSION_PROVIDER_MARKER), None)
 
     # Recovery path: always re-init when force sync was requested after auth failure
     recovering = force_reinit or bool(extension_state.get("force_cookie_sync"))
@@ -729,6 +752,16 @@ async def upsert_extension_provider(psid: str, psidts: str, name: str, force_rei
             and pool_info.get("status") == "Active"
             and pool_info.get("client") is not None
         ):
+            modified = False
+            if clean_email and existing.get("email") != clean_email:
+                existing["email"] = clean_email
+                modified = True
+            if display_name and existing.get("name") != display_name and display_name != "Extension Auto":
+                existing["name"] = display_name
+                modified = True
+            if modified:
+                save_accounts(accounts)
+
             extension_state["provider_id"] = acc_id
             extension_state["provider_name"] = existing.get("name") or display_name
             extension_state["masked_psid"] = _mask_secret(psid)
@@ -740,6 +773,7 @@ async def upsert_extension_provider(psid: str, psidts: str, name: str, force_rei
             return {
                 "id": acc_id,
                 "name": extension_state["provider_name"],
+                "email": clean_email or existing.get("email"),
                 "status": "Active",
                 "unchanged": True,
             }
@@ -751,15 +785,20 @@ async def upsert_extension_provider(psid: str, psidts: str, name: str, force_rei
         existing["name"] = display_name
         existing["psid"] = psid
         existing["psidts"] = psidts
+        if clean_email:
+            existing["email"] = clean_email
         existing["provider_type"] = "web"
         existing["source"] = EXTENSION_PROVIDER_MARKER
         # keep requests_count
         save_accounts(accounts)
     else:
-        acc_id = secrets.token_hex(4)
+        prefix = clean_email.split("@")[0] if clean_email else "ext"
+        clean_prefix = "".join(c for c in prefix if c.isalnum() or c in ("_", "-"))[:16]
+        acc_id = f"acc_{clean_prefix}_{secrets.token_hex(2)}"
         new_acc = {
             "id": acc_id,
             "name": display_name,
+            "email": clean_email,
             "provider_type": "web",
             "psid": psid,
             "psidts": psidts,
@@ -768,6 +807,9 @@ async def upsert_extension_provider(psid: str, psidts: str, name: str, force_rei
         }
         accounts.append(new_acc)
         save_accounts(accounts)
+
+    if hasattr(cl, "on_cookie_rotate"):
+        cl.on_cookie_rotate = make_rotate_callback(acc_id)
 
     async with pool_lock:
         # Close previous client if any
@@ -780,6 +822,7 @@ async def upsert_extension_provider(psid: str, psidts: str, name: str, force_rei
         client_pool[acc_id] = {
             "client": cl,
             "name": display_name,
+            "email": clean_email,
             "status": "Active",
             "requests_count": (old or {}).get("requests_count", 0) if old else 0,
             "error": None,
@@ -796,7 +839,13 @@ async def upsert_extension_provider(psid: str, psidts: str, name: str, force_rei
     extension_state["force_cookie_sync"] = False
     _extension_cookie_cache["applied_fingerprint"] = _cookie_pair_fingerprint(psid, psidts or "")
 
-    return {"id": acc_id, "name": display_name, "status": "Active", "unchanged": False}
+    return {
+        "id": acc_id,
+        "name": display_name,
+        "email": clean_email,
+        "status": "Active",
+        "unchanged": False,
+    }
 
 # API Key persistence helpers
 def load_keys() -> List[Dict[str, Any]]:
@@ -833,6 +882,79 @@ def save_accounts(accounts_list: List[Dict[str, Any]]):
             json.dump(accounts_list, f, indent=2, ensure_ascii=False)
     except Exception as e:
         logger.error(f"Failed to save accounts: {e}")
+
+def make_rotate_callback(acc_id: str):
+    """
+    Generate an async callback for a GeminiClient that immediately persists
+    any newly rotated __Secure-1PSIDTS to disk in gemini_accounts.json.
+    """
+    async def _on_rotate(client, new_ts: str):
+        if not new_ts:
+            return
+        try:
+            accounts = load_accounts()
+            target = next((a for a in accounts if a.get("id") == acc_id), None)
+            if target and target.get("psidts") != new_ts:
+                target["psidts"] = new_ts
+                save_accounts(accounts)
+                logger.success(
+                    f"[cookie-persist] Instantly saved newly rotated __Secure-1PSIDTS to disk for '{target.get('name')}' ({acc_id})"
+                )
+        except Exception as e:
+            logger.warning(f"[cookie-persist] Failed to persist rotated cookie for {acc_id}: {e}")
+    return _on_rotate
+
+
+async def sync_rotated_cookies_to_disk() -> int:
+    """
+    Check all active GeminiClient instances in the pool.
+    When background auto_refresh successfully rotates __Secure-1PSIDTS,
+    persist the updated cookie directly into gemini_accounts.json.
+    This guarantees that server restarts or poweroffs retain the newest session cookies.
+    """
+    accounts = load_accounts()
+    modified = False
+    updated_count = 0
+    for acc in accounts:
+        if acc.get("provider_type") == "api_key":
+            continue
+        acc_id = acc.get("id")
+        pool_info = client_pool.get(acc_id)
+        if not pool_info or pool_info.get("status") != "Active":
+            continue
+        cl = pool_info.get("client")
+        if not cl:
+            continue
+        try:
+            latest_ts = None
+            if hasattr(cl, "cookies") and cl.cookies:
+                latest_ts = cl.cookies.get("__Secure-1PSIDTS")
+            
+            latest_psid = None
+            if hasattr(cl, "cookies") and cl.cookies:
+                latest_psid = cl.cookies.get("__Secure-1PSID")
+
+            current_ts = acc.get("psidts") or ""
+            current_psid = acc.get("psid") or ""
+
+            if latest_ts and latest_ts != current_ts:
+                logger.info(
+                    f"[cookie-persist] Persisting refreshed __Secure-1PSIDTS to disk for account '{acc.get('name')}' ({acc_id})"
+                )
+                acc["psidts"] = latest_ts
+                modified = True
+                updated_count += 1
+
+            if latest_psid and latest_psid != current_psid:
+                acc["psid"] = latest_psid
+                modified = True
+        except Exception as e:
+            logger.debug(f"[cookie-persist] Error reading live cookies for {acc_id}: {e}")
+
+    if modified:
+        save_accounts(accounts)
+        logger.success(f"[cookie-persist] Successfully saved {updated_count} rotated cookie(s) to {ACCOUNTS_FILE.name}")
+    return updated_count
 
 # Custom AI Agents persistent helper
 def load_custom_agents() -> List[Dict[str, Any]]:
@@ -978,6 +1100,8 @@ async def initialize_client_pool():
             logger.info(f"Initializing GeminiClient for account {acc['name']} ({acc_id})...")
             try:
                 cl = await init_single_client(acc["psid"], acc["psidts"])
+                if hasattr(cl, "on_cookie_rotate"):
+                    cl.on_cookie_rotate = make_rotate_callback(acc_id)
                 client_pool[acc_id] = {
                     "client": cl,
                     "name": acc["name"],
@@ -1269,6 +1393,12 @@ async def cookie_health_watchdog():
                     ) + 1
             except Exception as e:
                 logger.warning(f"Watchdog proactive cookie apply: {e}")
+
+            # Persist any background-rotated cookies directly to gemini_accounts.json
+            try:
+                await sync_rotated_cookies_to_disk()
+            except Exception as e:
+                logger.debug(f"Watchdog cookie persist error: {e}")
 
             # Proactive auth health check: verify cookies are still valid
             # Runs every AUTH_CHECK_EVERY_N_WATCHDOG cycles (~90s by default)
@@ -1580,6 +1710,7 @@ async def extension_push_gemini_cookies(
     _extension_cookie_cache["psid"] = psid
     _extension_cookie_cache["psidts"] = psidts or ""
     _extension_cookie_cache["name"] = payload.name or "Extension Auto"
+    _extension_cookie_cache["email"] = payload.email or None
     _extension_cookie_cache["received_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
 
     extension_state["has_psid"] = True
@@ -1609,6 +1740,7 @@ async def extension_push_gemini_cookies(
             psid,
             psidts or "",
             preferred_name,
+            email=payload.email,
             force_reinit=recovering or cookies_changed,
         )
         extension_state["force_cookie_sync"] = False
@@ -1880,6 +2012,7 @@ async def get_providers():
         providers_list.append({
             "id": acc_id,
             "name": acc["name"],
+            "email": acc.get("email"),
             "provider_type": ptype,
             "status": pool_info.get("status", "Disconnected"),
             "requests_count": pool_info.get("requests_count", 0),
@@ -1920,6 +2053,8 @@ async def add_provider(payload: CreateProviderPayload):
             }
         else:
             cl = await init_single_client(payload.psid, payload.psidts)
+            if hasattr(cl, "on_cookie_rotate"):
+                cl.on_cookie_rotate = make_rotate_callback(acc_id)
             new_acc = {
                 "id": acc_id,
                 "name": payload.name,
