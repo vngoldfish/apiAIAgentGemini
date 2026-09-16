@@ -1,4 +1,4 @@
-FROM python:3.11-slim-bullseye
+FROM python:3.11-slim-bookworm
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -27,7 +27,7 @@ RUN pip install --no-cache-dir \
     imageio-ffmpeg>=0.5.1
 
 COPY src /app/src
-COPY dashboard_server.py dashboard.html index.html playground.html api_server.py media_services.py media_pipeline.py /app/
+COPY index.html api_server.py media_services.py media_pipeline.py supervisor.py /app/
 
 # Persist cookie auto-refresh files if GEMINI_COOKIE_PATH is used
 RUN mkdir -p /app/static /app/gemini_cookies \
