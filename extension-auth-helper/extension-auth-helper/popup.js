@@ -2,12 +2,28 @@
 
 let _syncPort = 8000;
 let _syncUrl = `http://127.0.0.1:${_syncPort}`;
+let _syncToken = "";
 
-function _updateSyncPort(port) {
-    if (port && typeof port === "number" && port >= 1 && port <= 65535) {
+function _updateSyncTarget(target) {
+    if (!target) return;
+    const s = String(target).trim();
+    if (s.startsWith("http://") || s.startsWith("https://")) {
+        _syncUrl = s.replace(/\/+$/, "");
+        _syncPort = 0;
+        return;
+    }
+    const port = parseInt(s, 10);
+    if (!isNaN(port) && port >= 1 && port <= 65535) {
         _syncPort = port;
         _syncUrl = `http://127.0.0.1:${_syncPort}`;
     }
+}
+function _updateSyncPort(port) { _updateSyncTarget(port); }
+
+function _getSyncHeaders(extra = {}) {
+    const h = { ...extra };
+    if (_syncToken) h["X-Sync-Token"] = _syncToken;
+    return h;
 }
 const _RENDER_URL = "https://labs.google/fx/tools/flow";
 const _GEMINI_URL = "https://gemini.google.com/app";
@@ -36,9 +52,11 @@ const statLast = document.getElementById("statLast");
 let currentTabId = null;
 
 function init() {
-    chrome.storage.local.get(["syncPort"], (data) => {
-        if (data && data.syncPort) {
-            _updateSyncPort(data.syncPort);
+    chrome.storage.local.get(["syncPort", "syncTarget", "syncToken"], (data) => {
+        if (data) {
+            if (data.syncTarget) _updateSyncTarget(data.syncTarget);
+            else if (data.syncPort) _updateSyncTarget(data.syncPort);
+            if (data.syncToken) _syncToken = String(data.syncToken).trim();
         }
         _pullSnapshot();
         _pingTheme().catch(() => {});
@@ -53,12 +71,18 @@ function init() {
     });
 
     chrome.storage.onChanged.addListener((changes, areaName) => {
-        if (areaName === "local" && changes.syncPort) {
-            _updateSyncPort(changes.syncPort.newValue);
-            _pullSnapshot();
-            _pingTheme().catch(() => {});
-            _pingGeminiCookies().catch(() => {});
+        if (areaName !== "local") return;
+        if (changes.syncTarget) {
+            _updateSyncTarget(changes.syncTarget.newValue);
+        } else if (changes.syncPort) {
+            _updateSyncTarget(changes.syncPort.newValue);
         }
+        if (changes.syncToken) {
+            _syncToken = String(changes.syncToken.newValue || "").trim();
+        }
+        _pullSnapshot();
+        _pingTheme().catch(() => {});
+        _pingGeminiCookies().catch(() => {});
     });
 }
 
@@ -140,7 +164,10 @@ async function _pingGeminiCookies() {
 
 async function _pingTheme() {
     try {
-        const response = await fetch(`${_syncUrl}/sync/status`, { signal: AbortSignal.timeout(3000) });
+        const response = await fetch(`${_syncUrl}/sync/status`, {
+            headers: _getSyncHeaders(),
+            signal: AbortSignal.timeout(3000),
+        });
         if (response.ok) {
             _setIndicator(dotBridge, "ok");
             valBridge.textContent = "Connected";
@@ -235,7 +262,7 @@ btnVerify.addEventListener("click", async () => {
             try { extId = (await chrome.storage.local.get(["instanceId"])).instanceId || ""; } catch (e) {  }
             const response = await fetch(`${_syncUrl}/sync/config`, {
                 signal: AbortSignal.timeout(3000),
-                headers: extId ? { "X-Ext-Id": extId } : {},
+                headers: _getSyncHeaders(extId ? { "X-Ext-Id": extId } : {}),
             });
             if (response.ok) {
                 const config = await response.json();

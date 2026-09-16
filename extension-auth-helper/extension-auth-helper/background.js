@@ -2208,10 +2208,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
                 const response = await fetch(`${_syncUrl}/sync/gemini-cookies`, {
                     method: "POST",
-                    headers: {
+                    headers: _getSyncHeaders({
                         "Content-Type": "application/json",
                         "X-Ext-Id": extId,
-                    },
+                    }),
                     body: JSON.stringify(body),
                     signal: AbortSignal.timeout(25000),
                 });

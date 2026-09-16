@@ -64,12 +64,34 @@ btnSave.addEventListener("click", () => {
             saveData.syncPort = portNum;
         }
 
-        chrome.storage.local.set(saveData, () => {
+        chrome.storage.local.set(saveData, async () => {
             if (chrome.runtime.lastError) {
                 showStatus(`Failed to save: ${chrome.runtime.lastError.message}`, "error");
-            } else {
-                const label = isUrl ? targetVal : `localhost:${targetVal}`;
-                showStatus(`✅ Saved! Target: ${label}${tokenVal ? " (with token)" : ""}`, "success");
+                return;
+            }
+
+            const targetUrl = isUrl ? targetVal.replace(/\/+$/, "") : `http://127.0.0.1:${portNum}`;
+            showStatus(`Saved! Testing connection to ${targetUrl}...`, "info", 0);
+
+            // Test connection to backend
+            try {
+                const headers = {};
+                if (tokenVal) headers["X-Sync-Token"] = tokenVal;
+
+                const resp = await fetch(`${targetUrl}/sync/status`, {
+                    headers,
+                    signal: AbortSignal.timeout(5000),
+                });
+
+                if (resp.ok) {
+                    showStatus(`✅ Connected successfully to ${targetUrl}!`, "success", 4500);
+                } else if (resp.status === 401) {
+                    showStatus(`❌ Connected, but 401 Unauthorized! Check Sync Token.`, "error", 5000);
+                } else {
+                    showStatus(`⚠️ Server responded with HTTP ${resp.status}.`, "error", 5000);
+                }
+            } catch (err) {
+                showStatus(`⚠️ Saved, but cannot reach server at ${targetUrl}: ${err.message}`, "error", 6000);
             }
         });
     } catch (e) {
@@ -77,18 +99,19 @@ btnSave.addEventListener("click", () => {
     }
 });
 
-function showStatus(text, type) {
+function showStatus(text, type, duration = 3500) {
     statusMsg.textContent = text;
     statusMsg.className = `status-msg show ${type}`;
     
-    // Auto hide after 3 seconds
     if (window.statusTimeout) {
         clearTimeout(window.statusTimeout);
     }
-    window.statusTimeout = setTimeout(() => {
-        statusMsg.classList.remove("show");
-        setTimeout(() => {
-            statusMsg.className = "status-msg";
-        }, 300);
-    }, 3000);
+    if (duration > 0) {
+        window.statusTimeout = setTimeout(() => {
+            statusMsg.classList.remove("show");
+            setTimeout(() => {
+                statusMsg.className = "status-msg";
+            }, 300);
+        }, duration);
+    }
 }
