@@ -11,20 +11,40 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup SSH key
+      - name: Setup SSH and Deploy
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST || secrets.vps_host || '64.110.97.90' }}
+          VPS_USER: ${{ secrets.VPS_USER || secrets.vps_user || 'ubuntu' }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY || secrets.vps_ssh_key }}
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
+          # Xử lý format key, loại bỏ ký tự lạ và CRLF của Windows
+          printf "%s\n" "$VPS_SSH_KEY" | tr -d '\r' > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          echo "Host *" > ~/.ssh/config
-          echo "  StrictHostKeyChecking no" >> ~/.ssh/config
-          echo "  UserKnownHostsFile /dev/null" >> ~/.ssh/config
-          chmod 600 ~/.ssh/config
 
-      - name: Test SSH connection
-        run: |
-          ssh -i ~/.ssh/deploy_key -v ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "echo 'SSH OK'"
+          echo "Connecting to $VPS_USER@$VPS_HOST..."
 
-      - name: Deploy
-        run: |
-          ssh -i ~/.ssh/deploy_key ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "cd /opt/apps/apiAIAgentGemini && sudo git fetch origin main && sudo git reset --hard origin/main && sudo docker compose build --no-cache && sudo docker compose down && sudo docker compose up -d && sleep 10 && sudo docker ps --filter name=gemini-api && sudo docker logs gemini-api --tail 10"
+          ssh -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            -o PubkeyAcceptedAlgorithms=+ssh-rsa \
+            -o HostkeyAlgorithms=+ssh-rsa \
+            $VPS_USER@$VPS_HOST << 'ENDSSH'
+              set -e
+              TARGET_DIR="/opt/apps/apiAIAgentGemini"
+              cd "$TARGET_DIR"
+              echo "==> Pulling latest code..."
+              sudo git fetch origin main
+              sudo git reset --hard origin/main
+
+              echo "==> Rebuilding and restarting Docker..."
+              sudo docker compose build --no-cache
+              sudo docker compose down
+              sudo docker compose up -d
+
+              echo "==> Checking status..."
+              sleep 8
+              sudo docker ps --filter name=gemini-api
+              sudo docker logs gemini-api --tail 20
+              echo "✅ Deployment finished successfully!"
+          ENDSSH
