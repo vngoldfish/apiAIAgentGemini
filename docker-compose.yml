@@ -18,6 +18,9 @@ services:
       - WATCHDOG_INTERVAL_SECONDS=${WATCHDOG_INTERVAL_SECONDS:-45}
       - PROACTIVE_COOKIE_ON_EVERY_REQUEST=${PROACTIVE_COOKIE_ON_EVERY_REQUEST:-1}
       - GEMINI_COOKIE_PATH=/app/gemini_cookies
+      - SYNC_TOKEN=32b287625fde24159ebf4a45b59606d8a70c0a467a52c341
+    networks:
+      - bawui-net
     volumes:
       - ./api_keys.json:/app/api_keys.json
       - ./gemini_accounts.json:/app/gemini_accounts.json
@@ -44,3 +47,7 @@ services:
       options:
         max-size: "20m"
         max-file: "5"
+
+networks:
+  bawui-net:
+    external: true
