@@ -76,6 +76,7 @@ class GoogleAPIClient:
     def __init__(self, api_key: str):
         self.api_key = api_key
         self.status = "Active"
+        self.account_status = AccountStatus.AVAILABLE
 
     @property
     def gems(self):
@@ -83,6 +84,12 @@ class GoogleAPIClient:
 
     async def fetch_gems(self, include_hidden=False):
         return []
+
+    async def _fetch_user_status(self):
+        return
+
+    def start_chat(self):
+        return None
 
     async def close(self):
         pass
@@ -184,8 +191,10 @@ CONFIG_FILE = ROOT / "dashboard_config.json"
 def load_config() -> dict:
     if CONFIG_FILE.exists():
         try:
-            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+            with open(CONFIG_FILE, "r", encoding="utf-8-sig") as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    return data
         except Exception as e:
             logger.error(f"Error loading dashboard_config.json: {e}")
     return {
@@ -627,10 +636,12 @@ async def check_provider_auth_health() -> None:
             if cl.account_status == AccountStatus.UNAUTHENTICATED:
                 logger.warning(
                     f"[auth-health] Provider {acc_id} ({info.get('name')}) "
-                    f"is UNAUTHENTICATED — triggering auto-recovery"
+                    f"is UNAUTHENTICATED — requesting fresh cookies from extension"
                 )
-                await mark_account_auth_failed(
-                    acc_id, AuthError("Proactive health check: cookie expired (UNAUTHENTICATED)")
+                await request_fresh_cookies_from_extension(
+                    f"Auth/cookie notice on provider {acc_id}: cookie expired (UNAUTHENTICATED)",
+                    name=(info.get("name") or "Extension Auto"),
+                    ttl=180,
                 )
                 # Try to apply cached cookies immediately if extension already pushed newer ones
                 try:
@@ -639,6 +650,13 @@ async def check_provider_auth_health() -> None:
                         logger.info(f"[auth-health] Applied cached cookies for immediate recovery")
                 except Exception:
                     pass
+                
+                # Only disconnect if there are other active providers to fail over to
+                other_active = list_active_provider_ids(exclude={acc_id})
+                if other_active:
+                    await mark_account_auth_failed(
+                        acc_id, AuthError("Proactive health check: cookie expired (UNAUTHENTICATED)")
+                    )
             else:
                 logger.debug(
                     f"[auth-health] Provider {acc_id} ({info.get('name')}) "
@@ -852,8 +870,11 @@ def load_keys() -> List[Dict[str, Any]]:
     if not KEYS_FILE.exists():
         return []
     try:
-        with open(KEYS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+        with open(KEYS_FILE, "r", encoding="utf-8-sig") as f:
+            data = json.load(f)
+            if isinstance(data, list):
+                return data
+            return []
     except Exception as e:
         logger.error(f"Failed to load keys from file: {e}")
         return []
@@ -870,8 +891,11 @@ def load_accounts() -> List[Dict[str, Any]]:
     if not ACCOUNTS_FILE.exists():
         return []
     try:
-        with open(ACCOUNTS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+        with open(ACCOUNTS_FILE, "r", encoding="utf-8-sig") as f:
+            data = json.load(f)
+            if isinstance(data, list):
+                return data
+            return []
     except Exception as e:
         logger.error(f"Failed to load accounts: {e}")
         return []
@@ -961,8 +985,9 @@ def load_custom_agents() -> List[Dict[str, Any]]:
     if not AGENTS_FILE.exists():
         return []
     try:
-        with open(AGENTS_FILE, "r", encoding="utf-8") as f:
-            agents = json.load(f)
+        with open(AGENTS_FILE, "r", encoding="utf-8-sig") as f:
+            data = json.load(f)
+            agents = data if isinstance(data, list) else []
             # Ensure every agent has an API key in the agent object and in api_keys.json
             keys_list = load_keys()
             keys_modified = False
@@ -2500,13 +2525,12 @@ async def chat_completions(payload: ChatCompletionRequest, request: Request):
     is_general_key = getattr(request.state, "is_general_key", True)
     authenticated_agent_id = getattr(request.state, "authenticated_agent_id", None)
     
-    # 1. If authenticated with an Agent Key, they can ONLY call their own agent model
-    if not is_general_key:
+    # 1. If authenticated with an Agent Key, auto-route requested model to their assigned AI Agent
+    if not is_general_key and authenticated_agent_id:
         if not payload.model or payload.model != authenticated_agent_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="This API key is only authorized to call its associated AI Agent."
-            )
+            logger.info(f"Agent-scoped API key: auto-routing model '{payload.model}' to agent '{authenticated_agent_id}'")
+            payload.model = authenticated_agent_id
+            target_model = authenticated_agent_id
             
     # 2. If calling a custom agent (model starts with "agent-"), they MUST use that agent's specific API key
     if payload.model and payload.model.startswith("agent-"):

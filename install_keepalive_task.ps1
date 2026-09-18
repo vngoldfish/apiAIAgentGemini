@@ -23,7 +23,7 @@ $keepArgs = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$kee
 schtasks /Create /TN "GeminiAPI-KeepAlive" /TR "`"$ps`" $keepArgs" /SC MINUTE /MO 1 /F /RL LIMITED | Out-Null
 Write-Host "[OK] GeminiAPI-KeepAlive (every 1 min)" -ForegroundColor Green
 
-# At logon — start supervisor in background
+# At logon - start supervisor in background
 $py = (Get-Command python -ErrorAction SilentlyContinue).Source
 if (-not $py) { $py = "python" }
 $supTr = "`"$py`" `"$sup`" --background"
@@ -34,17 +34,17 @@ Write-Host "[OK] GeminiAPI-Supervisor (at logon, if permitted)" -ForegroundColor
 # Boot now
 Write-Host "Starting stack now..." -ForegroundColor Cyan
 & $ps -NoProfile -ExecutionPolicy Bypass -File $keep
-Start-Sleep -Seconds 8
-# force supervisor if still needed
-& $py "$sup" --background
-Start-Sleep -Seconds 10
 
-try {
-    $h = Invoke-WebRequest "http://127.0.0.1:8000/health" -UseBasicParsing -TimeoutSec 10
-    Write-Host "HEALTH OK" -ForegroundColor Green
-    Write-Host $h.Content
-} catch {
-    Write-Host "Health pending — wait 30s and refresh" -ForegroundColor Yellow
+for ($i = 0; $i -lt 15; $i++) {
+    Start-Sleep -Seconds 2
+    try {
+        $h = Invoke-WebRequest "http://127.0.0.1:8000/health" -UseBasicParsing -TimeoutSec 5
+        if ($h.StatusCode -eq 200) {
+            Write-Host "HEALTH OK" -ForegroundColor Green
+            Write-Host $h.Content
+            break
+        }
+    } catch {}
 }
 
 Write-Host ""

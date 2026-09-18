@@ -40,5 +40,5 @@ try {
     $h = Invoke-WebRequest "http://127.0.0.1:8000/health" -UseBasicParsing -TimeoutSec 5
     Write-Host "Health OK: $($h.Content)" -ForegroundColor Green
 } catch {
-    Write-Host "Health not ready yet — check logs\ folder." -ForegroundColor Yellow
+    Write-Host "Health not ready yet - check logs\ folder." -ForegroundColor Yellow
 }

@@ -18,7 +18,7 @@ function Write-Log([string]$msg) {
 
 function Test-Healthy {
     try {
-        # Longer timeout — do not treat busy event-loop as dead too quickly
+        # Longer timeout - do not treat busy event-loop as dead too quickly
         $r = Invoke-WebRequest -Uri "http://127.0.0.1:8000/health" -UseBasicParsing -TimeoutSec 12
         return ($r.StatusCode -eq 200)
     } catch {
@@ -28,7 +28,7 @@ function Test-Healthy {
 
 function Get-ProcIds([string]$pattern) {
     $ids = @()
-    Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" -ErrorAction SilentlyContinue |
+    Get-CimInstance Win32_Process -Filter "Name = 'python.exe' or Name = 'pythonw.exe'" -ErrorAction SilentlyContinue |
         Where-Object { $_.CommandLine -and ($_.CommandLine -match $pattern) } |
         ForEach-Object { $ids += $_.ProcessId }
     return $ids
@@ -39,7 +39,7 @@ function Ensure-Supervisor {
     if ($sup.Count -gt 0) {
         return $false
     }
-    Write-Log "Supervisor missing — starting supervisor.py --background"
+    Write-Log "Supervisor missing - starting supervisor.py --background"
     try {
         # Use pythonw if available (no console window)
         $py = "python"
@@ -65,7 +65,7 @@ if ($healthy) {
     exit 0
 }
 
-# Health failed — count consecutive failures
+# Health failed - count consecutive failures
 $fails = 1
 if (Test-Path $failStamp) {
     try { $fails = [int](Get-Content $failStamp -Raw) + 1 } catch { $fails = 1 }
@@ -99,10 +99,12 @@ foreach ($procId in $toKill) {
 }
 Start-Sleep -Seconds 2
 
-@("api_keys.json", "gemini_accounts.json", "gemini_agents.json", "dashboard_config.json") | ForEach-Object {
+@("api_keys.json", "gemini_accounts.json", "gemini_agents.json") | ForEach-Object {
     $p = Join-Path $Root $_
-    if (-not (Test-Path $p)) { "{}" | Set-Content $p -Encoding utf8 }
+    if (-not (Test-Path $p)) { [System.IO.File]::WriteAllText($p, "[]", [System.Text.UTF8Encoding]::new($false)) }
 }
+$cfgPath = Join-Path $Root "dashboard_config.json"
+if (-not (Test-Path $cfgPath)) { [System.IO.File]::WriteAllText($cfgPath, "{}", [System.Text.UTF8Encoding]::new($false)) }
 if (-not (Test-Path (Join-Path $Root "static"))) {
     New-Item -ItemType Directory -Path (Join-Path $Root "static") | Out-Null
 }
@@ -119,5 +121,5 @@ for ($i = 0; $i -lt 15; $i++) {
         exit 0
     }
 }
-Write-Log "Hard recovery still unhealthy — next minute will retry"
+Write-Log "Hard recovery still unhealthy - next minute will retry"
 exit 1

@@ -22,6 +22,10 @@ from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+except Exception:
+    pass
 LOG_DIR = ROOT / "logs"
 LOG_DIR.mkdir(exist_ok=True)
 STATUS_FILE = LOG_DIR / "supervisor.status"
@@ -40,7 +44,10 @@ def log(msg: str) -> None:
             f.write(line + "\n")
     except Exception:
         pass
-    print(line, flush=True)
+    try:
+        print(line, flush=True)
+    except Exception:
+        pass
 
 
 def write_status(state: str, **extra) -> None:
@@ -70,6 +77,42 @@ def stop_docker() -> None:
         pass
 
 
+def kill_stale_supervisors(exclude: int | None = None) -> None:
+    """Kill duplicate supervisor.py processes."""
+    if os.name != "nt":
+        return
+    try:
+        ps = (
+            "Get-CimInstance Win32_Process -Filter \"Name='python.exe' or Name='pythonw.exe'\" | "
+            "Where-Object { $_.CommandLine -and $_.CommandLine -match 'supervisor\\.py' } | "
+            "Select-Object -ExpandProperty ProcessId"
+        )
+        out = subprocess.check_output(
+            ["powershell", "-NoProfile", "-Command", ps],
+            text=True,
+            errors="ignore",
+            timeout=20,
+        )
+        for line in out.splitlines():
+            line = line.strip()
+            if not line.isdigit():
+                continue
+            pid = int(line)
+            if exclude and pid == exclude:
+                continue
+            log(f"Killing duplicate supervisor PID {pid}")
+            try:
+                subprocess.run(
+                    ["taskkill", "/PID", str(pid), "/F"],
+                    capture_output=True,
+                    timeout=10,
+                )
+            except Exception:
+                pass
+    except Exception as e:
+        log(f"kill_stale_supervisors warning: {e}")
+
+
 def kill_stale_api_servers(exclude: int | None = None) -> None:
     """Kill orphaned api_server.py processes (not the supervisor)."""
     if os.name != "nt":
@@ -77,7 +120,7 @@ def kill_stale_api_servers(exclude: int | None = None) -> None:
     try:
         # Prefer PowerShell CIM (wmic is removed on newer Windows)
         ps = (
-            "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | "
+            "Get-CimInstance Win32_Process -Filter \"Name='python.exe' or Name='pythonw.exe'\" | "
             "Where-Object { $_.CommandLine -and $_.CommandLine -match 'api_server\\.py' "
             "-and $_.CommandLine -notmatch 'supervisor\\.py' } | "
             "Select-Object -ExpandProperty ProcessId"
@@ -120,15 +163,17 @@ def spawn_api() -> subprocess.Popen:
         # DETACHED_PROCESS = 0x00000008 | CREATE_NO_WINDOW = 0x08000000
         creationflags |= 0x00000008 | 0x08000000
 
-    # Log child stdout/stderr to rotating files via shell append to avoid pipe deadlock:
-    # use DEVNULL for stability; app logs via loguru to stderr file optionally later
+    stdout_path = LOG_DIR / "api_stdout.log"
+    stderr_path = LOG_DIR / "api_stderr.log"
+    stdout_f = open(stdout_path, "a", encoding="utf-8")
+    stderr_f = open(stderr_path, "a", encoding="utf-8")
     proc = subprocess.Popen(
         [sys.executable, str(ROOT / "api_server.py")],
         cwd=str(ROOT),
         env=env,
         stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=stdout_f,
+        stderr=stderr_f,
         creationflags=creationflags if os.name == "nt" else 0,
         close_fds=True,
     )
@@ -140,9 +185,11 @@ def spawn_api() -> subprocess.Popen:
 
 
 def main_loop() -> None:
-    SUPERVISOR_PID.write_text(str(os.getpid()), encoding="utf-8")
-    log(f"Supervisor started PID={os.getpid()} port={PORT}")
-    write_status("starting", supervisor_pid=os.getpid())
+    my_pid = os.getpid()
+    kill_stale_supervisors(exclude=my_pid)
+    SUPERVISOR_PID.write_text(str(my_pid), encoding="utf-8")
+    log(f"Supervisor started PID={my_pid} port={PORT}")
+    write_status("starting", supervisor_pid=my_pid)
     stop_docker()
     kill_stale_api_servers()
 
@@ -161,9 +208,9 @@ def main_loop() -> None:
         log(f"api_server running PID={proc.pid}")
         write_status("running", api_pid=proc.pid, restarts=restarts)
 
-        # Wait for child exit (this is the only wait — restart immediately on death)
+        # Wait for child exit (this is the only wait - restart immediately on death)
         code = proc.wait()
-        log(f"api_server exited code={code} — restarting in {RESTART_DELAY}s")
+        log(f"api_server exited code={code} - restarting in {RESTART_DELAY}s")
         write_status("restarting", exit_code=code, restarts=restarts)
         try:
             if PID_FILE.exists():
@@ -210,7 +257,7 @@ if __name__ == "__main__":
 
     # Ignore Ctrl+C in child wait loops lightly
     def _sig(_s, _f):
-        log("Supervisor signal — exiting (children may remain; keep_alive will clean)")
+        log("Supervisor signal - exiting (children may remain; keep_alive will clean)")
         sys.exit(0)
 
     try:
